@@ -21,21 +21,22 @@ function Principal() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showNext7, setShowNext7] = useState(false);
+  const [showDone, setShowDone] = useState(false);
 
+  const today = todayISO();
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ["tasks", "active"],
+    queryKey: ["tasks", "active", today],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
-        .eq("status", "pendente")
+        .or(`status.eq.pendente,and(status.eq.concluida,concluida_em.gte.${today}T00:00:00)`)
         .order("data", { ascending: true });
       if (error) throw error;
       return data as Task[];
     },
   });
 
-  const today = todayISO();
   const next7 = new Date();
   next7.setDate(next7.getDate() + 7);
   const next7ISO = next7.toISOString().slice(0, 10);
@@ -51,8 +52,9 @@ function Principal() {
     );
   }, [tasks, search]);
 
-  const todayTasks = sortTasks(filtered.filter((t) => t.data <= today));
-  const upcoming = sortTasks(filtered.filter((t) => t.data > today && t.data <= next7ISO));
+  const todayTasks = sortTasks(filtered.filter((t) => t.status === "pendente" && t.data <= today));
+  const upcoming = sortTasks(filtered.filter((t) => t.status === "pendente" && t.data > today && t.data <= next7ISO));
+  const doneToday = sortTasks(filtered.filter((t) => t.status === "concluida"));
 
   const toggleMutation = useMutation({
     mutationFn: async ({ task, solucao }: { task: Task; solucao?: string }) => {
@@ -256,6 +258,29 @@ function Principal() {
             <p className="text-sm text-muted-foreground">Sem tarefas agendadas.</p>
           ) : (
             upcoming.map((t) => (
+              <TaskCard
+                key={t.id}
+                task={t}
+                onToggle={(task, solucao) => toggleMutation.mutate({ task, solucao })}
+                onDelete={(task) => deleteMutation.mutate(task)}
+              />
+            ))
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Collapsible open={showDone} onOpenChange={setShowDone}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="w-full justify-between">
+            <span>Concluídas hoje ({doneToday.length})</span>
+            {showDone ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-3 mt-3">
+          {doneToday.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma tarefa concluída hoje ainda.</p>
+          ) : (
+            doneToday.map((t) => (
               <TaskCard
                 key={t.id}
                 task={t}

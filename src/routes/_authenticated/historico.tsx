@@ -35,7 +35,13 @@ function Historico() {
 
   const filtered = useMemo(() => {
     const today = todayISO();
-    let arr = tasks.filter((t) => t.data < today || t.status === "concluida");
+    // Exclude tasks completed today — they stay on the dashboard until tomorrow.
+    let arr = tasks.filter((t) => {
+      const completedToday =
+        t.status === "concluida" && t.concluida_em && t.concluida_em.slice(0, 10) === today;
+      if (completedToday) return false;
+      return t.data < today || t.status === "concluida";
+    });
     if (statusFilter !== "todas") arr = arr.filter((t) => t.status === statusFilter);
     if (tipoFilter !== "ambas") arr = arr.filter((t) => t.tipo === tipoFilter);
     if (period !== "all") {
