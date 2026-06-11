@@ -85,6 +85,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Organize suas tarefas profissionais e pessoais com checklist, prioridade, recorrência e histórico." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Planejador de Tarefas Diárias" },
+      { name: "twitter:description", content: "Organize suas tarefas profissionais e pessoais com checklist, prioridade, recorrência e histórico." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/ryC7sTxVQzQYFPCYIrN3FnEI2un2/social-images/social-1781196007923-8b4473b235d38d2a8cb8c5eef763a7cc7882d6f6.webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/ryC7sTxVQzQYFPCYIrN3FnEI2un2/social-images/social-1781196007923-8b4473b235d38d2a8cb8c5eef763a7cc7882d6f6.webp" },
     ],
     links: [
       {
