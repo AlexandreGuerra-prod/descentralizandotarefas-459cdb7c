@@ -176,6 +176,14 @@ Diferenciais em relação a um Todo comum:
 
 #### Passo a passo
 
+> **Importante sobre o backend:** existem duas formas de rodar o container.
+> **A) Mais simples** — continuar usando o Lovable Cloud como backend remoto.
+> Nesse caso você NÃO precisa de `SUPABASE_SERVICE_ROLE_KEY` (ela é gerenciada
+> internamente e não é exposta). **B) Apontando para seu próprio Supabase**
+> (ex.: projeto `organizador-tarefas` que você criou no Supabase) — aí você
+> precisa das credenciais do seu projeto, incluindo a service role se for rodar
+> server functions com privilégios administrativos no container.
+
 1. **Exporte o código** do Lovable para o GitHub (botão GitHub no
    topo do editor) e clone no seu PC:
    ```bash
@@ -184,15 +192,28 @@ Diferenciais em relação a um Todo comum:
    bun install
    ```
 
-2. **Crie `.env.production`** com as variáveis do backend que vai
-   usar:
+2. **Crie `.env.production`** com as variáveis do backend escolhido:
+
+   **Opção A — Lovable Cloud (recomendado, zero manutenção de banco):**
    ```env
-   VITE_SUPABASE_URL=https://seu-supabase.local
-   VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
-   SUPABASE_URL=https://seu-supabase.local
-   SUPABASE_PUBLISHABLE_KEY=eyJ...
-   SUPABASE_SERVICE_ROLE_KEY=eyJ...   # só se for self-host do Supabase
+   VITE_SUPABASE_URL=https://<ref-do-seu-projeto-lovable>.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=<anon-key-do-projeto-lovable>
    ```
+   > `SUPABASE_SERVICE_ROLE_KEY` NÃO é necessária aqui. O Lovable Cloud
+   > injeta automaticamente as credenciais de servidor no runtime das
+   > server functions. Você nunca vê essa chave — e isso é proposital,
+   > por segurança.
+
+   **Opção B — Seu próprio Supabase (ex.: `organizador-tarefas`):**
+   ```env
+   VITE_SUPABASE_URL=https://<ref-do-seu-supabase>.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=<anon-key-do-seu-supabase>
+   SUPABASE_SERVICE_ROLE_KEY=<service-role-key-do-seu-supabase>
+   ```
+   > `SUPABASE_SERVICE_ROLE_KEY` só é necessária se você for rodar
+   > server functions que façam operações administrativas (ex.: backfills,
+   > gerenciamento de roles) dentro do container. Para uso normal do app
+   > (login, CRUD de tarefas, upload de anexos), a `PUBLISHABLE_KEY` basta.
 
 3. **Build de produção**:
    ```bash
