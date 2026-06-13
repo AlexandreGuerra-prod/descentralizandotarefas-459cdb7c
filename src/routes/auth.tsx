@@ -110,7 +110,7 @@ function AuthPage() {
             <CalendarCheck className="h-7 w-7 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">Planejador de Tarefas</h1>
-          <p className="text-sm text-muted-foreground">Acesso restrito aos usuários autorizados</p>
+          <p className="text-sm text-muted-foreground">Crie sua conta e organize suas tarefas</p>
         </div>
 
         <Card className="p-6">
