@@ -1,14 +1,21 @@
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Plus, Trash2, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import type { Shortcut } from "@/lib/task-utils";
+import { deleteMyAccount } from "@/lib/account.functions";
 
 export const Route = createFileRoute("/_authenticated/configuracoes")({
   head: () => ({ meta: [{ title: "Configurações | Planejador" }] }),
@@ -18,6 +25,8 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
 function Configuracoes() {
   const qc = useQueryClient();
   const ctx = useRouteContext({ from: "/_authenticated" });
+  const navigate = useNavigate();
+  const deleteAccountFn = useServerFn(deleteMyAccount);
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");
 
@@ -53,6 +62,20 @@ function Configuracoes() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shortcuts"] }),
+  });
+
+  const deleteAccount = useMutation({
+    mutationFn: async () => {
+      await deleteAccountFn();
+    },
+    onSuccess: async () => {
+      toast.success("Conta excluída");
+      await qc.cancelQueries();
+      qc.clear();
+      await supabase.auth.signOut();
+      navigate({ to: "/auth", replace: true });
+    },
+    onError: (e: Error) => toast.error("Erro ao excluir conta", { description: e.message }),
   });
 
   return (
@@ -102,6 +125,40 @@ function Configuracoes() {
         <p className="text-sm text-muted-foreground">
           Integração disponível em breve. Cada usuário poderá conectar sua própria conta Google para sincronizar tarefas com prazo.
         </p>
+      </Card>
+
+      <Card className="p-6 border-destructive/40">
+        <h2 className="font-semibold mb-2 flex items-center gap-2 text-destructive">
+          <AlertTriangle className="h-4 w-4" /> Zona de risco
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Excluir sua conta remove permanentemente todas as suas tarefas, anexos, atalhos e dados de perfil.
+          Esta ação não pode ser desfeita.
+        </p>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive">
+              <Trash2 className="h-4 w-4 mr-2" /> Excluir minha conta
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir conta permanentemente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Todos os seus dados ({ctx.user.email}) serão apagados e não poderão ser recuperados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteAccount.mutate()}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Sim, excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Card>
     </div>
   );
