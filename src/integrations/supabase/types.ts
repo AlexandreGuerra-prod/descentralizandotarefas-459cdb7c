@@ -29,6 +29,136 @@ export type Database = {
         }
         Relationships: []
       }
+      process_flow_edges: {
+        Row: {
+          created_at: string
+          flow_id: string
+          id: string
+          source_node_id: string
+          target_node_id: string
+        }
+        Insert: {
+          created_at?: string
+          flow_id: string
+          id?: string
+          source_node_id: string
+          target_node_id: string
+        }
+        Update: {
+          created_at?: string
+          flow_id?: string
+          id?: string
+          source_node_id?: string
+          target_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_flow_edges_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "process_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_flow_edges_source_node_id_fkey"
+            columns: ["source_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_flow_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_flow_edges_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_flow_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      process_flow_nodes: {
+        Row: {
+          cor: string
+          created_at: string
+          flow_id: string
+          id: string
+          posicao_x: number
+          posicao_y: number
+          red_flag: boolean
+          task_id: string | null
+          texto: string | null
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          cor?: string
+          created_at?: string
+          flow_id: string
+          id?: string
+          posicao_x?: number
+          posicao_y?: number
+          red_flag?: boolean
+          task_id?: string | null
+          texto?: string | null
+          tipo: string
+          updated_at?: string
+        }
+        Update: {
+          cor?: string
+          created_at?: string
+          flow_id?: string
+          id?: string
+          posicao_x?: number
+          posicao_y?: number
+          red_flag?: boolean
+          task_id?: string | null
+          texto?: string | null
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_flow_nodes_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "process_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_flow_nodes_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      process_flows: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          tipo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          tipo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          tipo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
