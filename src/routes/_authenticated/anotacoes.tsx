@@ -16,6 +16,7 @@ import {
 import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Palette, Plus, Search, Trash2, Download, Share2, X, FileText, FileCode,
+  List, ArrowRight, CheckSquare, Type, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { MicButton } from "@/components/MicButton";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ function AnotacoesPage() {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showOlder, setShowOlder] = useState(false);
 
   const { data: notes = [], isLoading } = useQuery({
     queryKey: ["notes"],
@@ -85,6 +87,13 @@ function AnotacoesPage() {
   });
 
   const selected = notes.find((n) => n.id === selectedId) ?? null;
+
+  // Pre-select most recent note when nothing is selected
+  useEffect(() => {
+    if (!selectedId && notes.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+      setSelectedId(notes[0].id);
+    }
+  }, [notes, selectedId]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -106,6 +115,9 @@ function AnotacoesPage() {
       );
     });
   }, [notes, search, tagFilter]);
+
+  const recent = filtered.slice(0, 5);
+  const older = filtered.slice(5);
 
   const createNote = useMutation({
     mutationFn: async () => {
@@ -175,33 +187,73 @@ function AnotacoesPage() {
               ))}
             </div>
           )}
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             {isLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
             {!isLoading && filtered.length === 0 && (
               <p className="text-sm text-muted-foreground">Nenhuma nota encontrada.</p>
             )}
-            {filtered.map((n) => (
-              <Card
-                key={n.id}
-                onClick={() => setSelectedId(n.id)}
-                className={`p-3 cursor-pointer hover:bg-accent transition ${selectedId === n.id ? "ring-2 ring-primary" : ""}`}
-              >
-                <div className="font-medium truncate">{n.title || "Sem título"}</div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(n.updated_at).toLocaleString("pt-BR")}
-                </div>
-                <div className="text-xs text-muted-foreground truncate mt-1">
-                  {n.plain_text.slice(0, 80) || "(vazia)"}
-                </div>
-                {n.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {n.tags.slice(0, 4).map((t) => (
-                      <Badge key={t} variant="outline" className="text-[10px] py-0">#{t}</Badge>
+            {recent.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">
+                  Notas recentes
+                </h2>
+                {recent.map((n) => (
+                  <Card
+                    key={n.id}
+                    onClick={() => setSelectedId(n.id)}
+                    className={`p-3 cursor-pointer hover:bg-accent transition shadow-sm ${
+                      selectedId === n.id ? "ring-2 ring-primary bg-accent/40" : ""
+                    }`}
+                  >
+                    <div className="font-medium truncate">{n.title || "Sem título"}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(n.updated_at).toLocaleString("pt-BR")}
+                    </div>
+                    <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                      {n.plain_text.slice(0, 140) || "(vazia)"}
+                    </div>
+                    {n.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {n.tags.slice(0, 4).map((t) => (
+                          <Badge key={t} variant="outline" className="text-[10px] py-0">#{t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+            {older.length > 0 && (
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setShowOlder((v) => !v)}
+                  className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 hover:text-foreground"
+                >
+                  {showOlder ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  Outras notas ({older.length})
+                </button>
+                {showOlder && (
+                  <div className="space-y-0.5">
+                    {older.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setSelectedId(n.id)}
+                        className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center justify-between gap-2 hover:bg-accent transition ${
+                          selectedId === n.id ? "bg-accent ring-1 ring-primary" : ""
+                        }`}
+                      >
+                        <span className="truncate flex-1">{n.title || "Sem título"}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(n.updated_at).toLocaleDateString("pt-BR")}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 )}
-              </Card>
-            ))}
+              </div>
+            )}
           </div>
         </aside>
 
@@ -275,6 +327,32 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
     editorRef.current?.focus();
     document.execCommand(command, false, value);
     scheduleSave();
+  }
+
+  function insertHTML(html: string) {
+    editorRef.current?.focus();
+    document.execCommand("insertHTML", false, html);
+    scheduleSave();
+  }
+
+  function insertChecklist() {
+    insertHTML(
+      '<ul class="checklist"><li><input type="checkbox" />&nbsp;Item</li></ul><p><br/></p>'
+    );
+  }
+
+  function insertArrowList() {
+    insertHTML('<ul class="arrow-list"><li>Item</li></ul><p><br/></p>');
+  }
+
+  // Persist checkbox state: toggle the `checked` attribute on click and save.
+  function onEditorClick(e: React.MouseEvent) {
+    const t = e.target as HTMLElement;
+    if (t instanceof HTMLInputElement && t.type === "checkbox") {
+      if (t.checked) t.setAttribute("checked", "");
+      else t.removeAttribute("checked");
+      scheduleSave();
+    }
   }
 
   function addTag() {
@@ -377,6 +455,26 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
         <Button type="button" variant="ghost" size="icon" onClick={() => cmd("italic")} title="Itálico"><Italic className="h-4 w-4" /></Button>
         <Button type="button" variant="ghost" size="icon" onClick={() => cmd("underline")} title="Sublinhado"><Underline className="h-4 w-4" /></Button>
         <span className="w-px h-5 bg-border mx-1" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" title="Tamanho da fonte"><Type className="h-4 w-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => cmd("fontSize", "2")}>
+              <span className="text-xs">A</span><span className="ml-2">Pequeno</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => cmd("fontSize", "3")}>
+              <span className="text-sm">A</span><span className="ml-2">Padrão</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => cmd("fontSize", "5")}>
+              <span className="text-lg">A</span><span className="ml-2">Grande</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button type="button" variant="ghost" size="icon" onClick={() => cmd("insertUnorderedList")} title="Lista com bullets"><List className="h-4 w-4" /></Button>
+        <Button type="button" variant="ghost" size="icon" onClick={insertArrowList} title="Lista com setas"><ArrowRight className="h-4 w-4" /></Button>
+        <Button type="button" variant="ghost" size="icon" onClick={insertChecklist} title="Checklist"><CheckSquare className="h-4 w-4" /></Button>
+        <span className="w-px h-5 bg-border mx-1" />
         <Button type="button" variant="ghost" size="icon" onClick={() => cmd("justifyLeft")} title="Esquerda"><AlignLeft className="h-4 w-4" /></Button>
         <Button type="button" variant="ghost" size="icon" onClick={() => cmd("justifyCenter")} title="Centralizado"><AlignCenter className="h-4 w-4" /></Button>
         <Button type="button" variant="ghost" size="icon" onClick={() => cmd("justifyRight")} title="Direita"><AlignRight className="h-4 w-4" /></Button>
@@ -410,9 +508,20 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
         contentEditable
         suppressContentEditableWarning
         onInput={scheduleSave}
+        onClick={onEditorClick}
         onBlur={doSave}
-        className="min-h-[50vh] border rounded-md p-3 outline-none focus:ring-1 focus:ring-ring text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+        className="notes-editor min-h-[50vh] border rounded-md p-3 outline-none focus:ring-1 focus:ring-ring text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert"
       />
+      <style>{`
+        .notes-editor ul.arrow-list { list-style: none; padding-left: 1.25rem; }
+        .notes-editor ul.arrow-list > li { position: relative; padding-left: 1.25rem; }
+        .notes-editor ul.arrow-list > li::before {
+          content: "→"; position: absolute; left: 0; color: hsl(var(--primary));
+        }
+        .notes-editor ul.checklist { list-style: none; padding-left: 0.25rem; }
+        .notes-editor ul.checklist > li { display: flex; align-items: center; gap: 0.5rem; }
+        .notes-editor ul.checklist input[type="checkbox"] { transform: scale(1.1); cursor: pointer; }
+      `}</style>
     </Card>
   );
 }
