@@ -19,9 +19,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Copy, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { createExampleFlow } from "@/lib/example-flow";
 
 export const Route = createFileRoute("/_authenticated/processos/")({
   component: ProcessosList,
@@ -98,6 +99,16 @@ function ProcessosList() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["process_flows"] }),
+  });
+
+  const createExample = useMutation({
+    mutationFn: () => createExampleFlow(userId),
+    onSuccess: (id) => {
+      qc.invalidateQueries({ queryKey: ["process_flows"] });
+      toast.success("Fluxo de exemplo criado");
+      navigate({ to: "/processos/$id", params: { id } });
+    },
+    onError: (e: Error) => toast.error("Erro ao criar exemplo", { description: e.message }),
   });
 
   const duplicateFlow = useMutation({
@@ -219,6 +230,14 @@ function ProcessosList() {
             </SelectContent>
           </Select>
           <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Novo fluxo</Button>
+          <Button
+            variant="outline"
+            onClick={() => createExample.mutate()}
+            disabled={createExample.isPending}
+            title="Cria um fluxo modelo pronto com nós de exemplo"
+          >
+            <Sparkles className="h-4 w-4 mr-1" />Exemplo
+          </Button>
         </div>
       </div>
 
