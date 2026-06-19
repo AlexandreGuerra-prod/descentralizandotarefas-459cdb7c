@@ -497,6 +497,8 @@ function EditorInner() {
       duracao_estimada_minutes: number | null;
       etapa_tipo: EtapaTipo;
       lane_id: string | null;
+      largura_px: number;
+      altura_px: number;
     }>) => {
       setSaving(true);
       const { error } = await supabase.from("process_flow_nodes").update(patch).eq("id", id);
@@ -520,8 +522,18 @@ function EditorInner() {
     }, 600);
   }, [flowId]);
 
-  const persistStrokes = useCallback((s: Stroke[]) => saveExtras({ strokes: s, labels }), [saveExtras, labels]);
-  const persistLabels = useCallback((l: FloatLabel[]) => saveExtras({ strokes, labels: l }), [saveExtras, strokes]);
+  const strokesRef = useRef<Stroke[]>([]);
+  const labelsRef = useRef<FloatLabel[]>([]);
+  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
+  useEffect(() => { labelsRef.current = labels; }, [labels]);
+  const persistStrokes = useCallback(
+    (s: Stroke[]) => saveExtras({ strokes: s, labels: labelsRef.current }),
+    [saveExtras],
+  );
+  const persistLabels = useCallback(
+    (l: FloatLabel[]) => saveExtras({ strokes: strokesRef.current, labels: l }),
+    [saveExtras],
+  );
 
   const handleColorChange = useCallback((id: string, cor: FlowColor) => {
     setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, cor } } : n)));
@@ -550,6 +562,11 @@ function EditorInner() {
   const handleEtapaChange = useCallback((id: string, etapa: EtapaTipo) => {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, etapa_tipo: etapa } } : n));
     updateNodeRemote(id, { etapa_tipo: etapa });
+  }, [setNodes, updateNodeRemote]);
+
+  const handleResize = useCallback((id: string, w: number, h: number) => {
+    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, largura: w, altura: h } } : n));
+    updateNodeRemote(id, { largura_px: w, altura_px: h });
   }, [setNodes, updateNodeRemote]);
 
   const commentTimer = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -596,6 +613,8 @@ function EditorInner() {
       red_flag: row.red_flag,
       duracao_estimada_minutes: row.duracao_estimada_minutes ?? null,
       etapa_tipo: (row.etapa_tipo ?? "intermediaria") as EtapaTipo,
+      largura: row.largura_px ?? undefined,
+      altura: row.altura_px ?? undefined,
       onColorChange: handleColorChange,
       onTextColorChange: handleTextColorChange,
       onRedFlagToggle: handleRedFlagToggle,
@@ -604,8 +623,9 @@ function EditorInner() {
       onDurationChange: handleDurationChange,
       onEtapaChange: handleEtapaChange,
       onCommentChange: handleCommentChange,
+      onResize: handleResize,
     } as NodeData as unknown as Record<string, unknown>,
-  }), [taskMap, handleColorChange, handleTextColorChange, handleRedFlagToggle, handleDeleteNode, handleOpenNode, handleDurationChange, handleEtapaChange, handleCommentChange]);
+  }), [taskMap, handleColorChange, handleTextColorChange, handleRedFlagToggle, handleDeleteNode, handleOpenNode, handleDurationChange, handleEtapaChange, handleCommentChange, handleResize]);
 
   useEffect(() => {
     if (loaded) return;
@@ -616,8 +636,13 @@ function EditorInner() {
       ]);
       setNodes((nRows ?? []).map(decorateNode));
       setEdges((eRows ?? []).map((e) => ({
-        id: e.id, source: e.source_node_id, target: e.target_node_id,
-        animated: false, style: { strokeWidth: 2 },
+        id: e.id,
+        source: e.source_node_id,
+        target: e.target_node_id,
+        type: "smoothstep",
+        markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+        animated: false,
+        style: { strokeWidth: 2 },
       })));
       setLoaded(true);
     })();
@@ -646,7 +671,14 @@ function EditorInner() {
       .insert({ flow_id: flowId, source_node_id: params.source, target_node_id: params.target })
       .select("id").single();
     if (error) { toast.error("Erro ao conectar", { description: error.message }); return; }
-    setEdges((eds) => addEdge({ ...params, id: data.id, animated: true, style: { strokeWidth: 2 } }, eds));
+    setEdges((eds) => addEdge({
+      ...params,
+      id: data.id,
+      animated: true,
+      type: "smoothstep",
+      markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+      style: { strokeWidth: 2 },
+    }, eds));
     setTimeout(() => setEdges((eds) => eds.map((e) => e.id === data.id ? { ...e, animated: false } : e)), 600);
   }, [flowId, setEdges]);
 
@@ -669,11 +701,21 @@ function EditorInner() {
     if (lanes.length > 0) {
       const idx = Math.max(0, Math.min(lanes.length - 1, Math.floor(node.position.y / LANE_HEIGHT)));
       lane_id = lanes[idx]?.id ?? null;
+      const snapMin = idx * LANE_HEIGHT + 20;
+      const snapMax = (idx + 1) * LANE_HEIGHT - 80;
+      const clampedY = Math.min(Math.max(node.position.y, snapMin), snapMax);
+      if (clampedY !== node.position.y) {
+        setNodes((nds) => nds.map((n) =>
+          n.id === node.id ? { ...n, position: { ...n.position, y: clampedY } } : n
+        ));
+        updateNodeRemote(node.id, { posicao_x: node.position.x, posicao_y: clampedY, lane_id });
+        return;
+      }
     }
     updateNodeRemote(node.id, {
       posicao_x: node.position.x, posicao_y: node.position.y, lane_id,
     });
-  }, [updateNodeRemote, lanes, persistLabels]);
+  }, [updateNodeRemote, lanes, persistLabels, setNodes]);
 
   async function addNoteNode() {
     const center = { x: 100 + Math.random() * 200, y: 100 + Math.random() * 200 };
@@ -706,16 +748,18 @@ function EditorInner() {
     setPickTaskOpen(false);
   }
 
-  function addFloatLabel() {
+  const addFloatLabel = useCallback(() => {
     const wrap = flowWrapper.current?.getBoundingClientRect();
     const p = wrap
       ? screenToFlowPosition({ x: wrap.left + wrap.width / 2, y: wrap.top + wrap.height / 2 })
       : { x: 200, y: 200 };
-    const next: FloatLabel = { id: crypto.randomUUID(), x: p.x, y: p.y, text: "Etiqueta", color: "#b45309" };
-    const arr = [...labels, next];
-    setLabels(arr);
-    persistLabels(arr);
-  }
+    const next: FloatLabel = { id: crypto.randomUUID(), x: p.x, y: p.y, text: "Nova etiqueta", color: "#b45309" };
+    setLabels((ls) => {
+      const arr = [...ls, next];
+      persistLabels(arr);
+      return arr;
+    });
+  }, [screenToFlowPosition, persistLabels]);
 
   const updateLabel = useCallback((id: string, patch: Partial<FloatLabel>) => {
     setLabels((ls) => {
