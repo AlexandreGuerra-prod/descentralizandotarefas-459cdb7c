@@ -17,6 +17,7 @@ import {
   getNodesBounds,
   getViewportForBounds,
   useViewport,
+  MarkerType,
   type Node,
   type Edge,
   type Connection,
@@ -86,6 +87,8 @@ type NodeData = {
   red_flag: boolean;
   duracao_estimada_minutes: number | null;
   etapa_tipo: EtapaTipo;
+  largura?: number;
+  altura?: number;
   onColorChange: (id: string, cor: FlowColor) => void;
   onTextColorChange: (id: string, c: TextColor) => void;
   onRedFlagToggle: (id: string) => void;
@@ -94,6 +97,7 @@ type NodeData = {
   onDurationChange: (id: string, minutes: number | null) => void;
   onEtapaChange: (id: string, etapa: EtapaTipo) => void;
   onCommentChange: (id: string, c: string) => void;
+  onResize: (id: string, w: number, h: number) => void;
 };
 
 function FlowNode({ id, data, selected }: NodeProps) {
@@ -113,8 +117,26 @@ function FlowNode({ id, data, selected }: NodeProps) {
   return (
     <div
       title={`${d.tipo === "tarefa" ? (d.taskTitulo ?? "Tarefa") : d.texto ?? ""}\nTipo: ${ETAPA_LABEL[d.etapa_tipo]}${d.duracao_estimada_minutes != null ? `\nDuração: ${d.duracao_estimada_minutes}min` : ""}`}
-      className={`rounded-lg border-2 shadow-sm min-w-[180px] max-w-[280px] relative ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
-      style={{ background: bg, borderColor: border, color: textColor }}
+      className={`rounded-lg border-2 shadow-sm relative ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
+      style={{
+        background: bg,
+        borderColor: border,
+        color: textColor,
+        width: d.largura ?? 200,
+        height: d.altura,
+        minWidth: 160,
+        minHeight: 90,
+        resize: "both",
+        overflow: "auto",
+      }}
+      onMouseUp={(e) => {
+        const el = e.currentTarget;
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        if (w !== (d.largura ?? 200) || h !== d.altura) {
+          d.onResize(id, w, h);
+        }
+      }}
     >
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
@@ -215,6 +237,28 @@ function FlowNode({ id, data, selected }: NodeProps) {
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
+      {!isComment && (
+        <div className="flex border-t border-current/10 nodrag">
+          {(["inicio", "intermediaria", "fim"] as EtapaTipo[]).map((et) => (
+            <button
+              key={et}
+              title={ETAPA_LABEL[et]}
+              onClick={() => d.onEtapaChange(id, et)}
+              className={`flex-1 text-[9px] py-0.5 font-semibold uppercase transition-colors ${
+                d.etapa_tipo === et
+                  ? et === "inicio"
+                    ? "bg-green-500 text-white"
+                    : et === "fim"
+                      ? "bg-red-500 text-white"
+                      : "bg-blue-400 text-white"
+                  : "opacity-40 hover:opacity-70"
+              }`}
+            >
+              {et === "inicio" ? "▶ Início" : et === "fim" ? "■ Fim" : "● Meio"}
+            </button>
+          ))}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
     </div>
