@@ -151,6 +151,7 @@ export type Database = {
       }
       process_flow_nodes: {
         Row: {
+          altura_px: number | null
           comentario: string | null
           cor: string
           cor_texto: string | null
@@ -160,6 +161,7 @@ export type Database = {
           flow_id: string
           id: string
           lane_id: string | null
+          largura_px: number | null
           posicao_x: number
           posicao_y: number
           red_flag: boolean
@@ -169,6 +171,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          altura_px?: number | null
           comentario?: string | null
           cor?: string
           cor_texto?: string | null
@@ -178,6 +181,7 @@ export type Database = {
           flow_id: string
           id?: string
           lane_id?: string | null
+          largura_px?: number | null
           posicao_x?: number
           posicao_y?: number
           red_flag?: boolean
@@ -187,6 +191,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          altura_px?: number | null
           comentario?: string | null
           cor?: string
           cor_texto?: string | null
@@ -196,6 +201,7 @@ export type Database = {
           flow_id?: string
           id?: string
           lane_id?: string | null
+          largura_px?: number | null
           posicao_x?: number
           posicao_y?: number
           red_flag?: boolean

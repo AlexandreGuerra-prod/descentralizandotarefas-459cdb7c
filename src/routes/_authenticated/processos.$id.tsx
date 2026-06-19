@@ -17,6 +17,7 @@ import {
   getNodesBounds,
   getViewportForBounds,
   useViewport,
+  MarkerType,
   type Node,
   type Edge,
   type Connection,
@@ -86,6 +87,8 @@ type NodeData = {
   red_flag: boolean;
   duracao_estimada_minutes: number | null;
   etapa_tipo: EtapaTipo;
+  largura?: number;
+  altura?: number;
   onColorChange: (id: string, cor: FlowColor) => void;
   onTextColorChange: (id: string, c: TextColor) => void;
   onRedFlagToggle: (id: string) => void;
@@ -94,6 +97,7 @@ type NodeData = {
   onDurationChange: (id: string, minutes: number | null) => void;
   onEtapaChange: (id: string, etapa: EtapaTipo) => void;
   onCommentChange: (id: string, c: string) => void;
+  onResize: (id: string, w: number, h: number) => void;
 };
 
 function FlowNode({ id, data, selected }: NodeProps) {
@@ -113,8 +117,26 @@ function FlowNode({ id, data, selected }: NodeProps) {
   return (
     <div
       title={`${d.tipo === "tarefa" ? (d.taskTitulo ?? "Tarefa") : d.texto ?? ""}\nTipo: ${ETAPA_LABEL[d.etapa_tipo]}${d.duracao_estimada_minutes != null ? `\nDuração: ${d.duracao_estimada_minutes}min` : ""}`}
-      className={`rounded-lg border-2 shadow-sm min-w-[180px] max-w-[280px] relative ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
-      style={{ background: bg, borderColor: border, color: textColor }}
+      className={`rounded-lg border-2 shadow-sm relative ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
+      style={{
+        background: bg,
+        borderColor: border,
+        color: textColor,
+        width: d.largura ?? 200,
+        height: d.altura,
+        minWidth: 160,
+        minHeight: 90,
+        resize: "both",
+        overflow: "auto",
+      }}
+      onMouseUp={(e) => {
+        const el = e.currentTarget;
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        if (w !== (d.largura ?? 200) || h !== d.altura) {
+          d.onResize(id, w, h);
+        }
+      }}
     >
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
@@ -215,6 +237,28 @@ function FlowNode({ id, data, selected }: NodeProps) {
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
+      {!isComment && (
+        <div className="flex border-t border-current/10 nodrag">
+          {(["inicio", "intermediaria", "fim"] as EtapaTipo[]).map((et) => (
+            <button
+              key={et}
+              title={ETAPA_LABEL[et]}
+              onClick={() => d.onEtapaChange(id, et)}
+              className={`flex-1 text-[9px] py-0.5 font-semibold uppercase transition-colors ${
+                d.etapa_tipo === et
+                  ? et === "inicio"
+                    ? "bg-green-500 text-white"
+                    : et === "fim"
+                      ? "bg-red-500 text-white"
+                      : "bg-blue-400 text-white"
+                  : "opacity-40 hover:opacity-70"
+              }`}
+            >
+              {et === "inicio" ? "▶ Início" : et === "fim" ? "■ Fim" : "● Meio"}
+            </button>
+          ))}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
     </div>
@@ -453,6 +497,8 @@ function EditorInner() {
       duracao_estimada_minutes: number | null;
       etapa_tipo: EtapaTipo;
       lane_id: string | null;
+      largura_px: number;
+      altura_px: number;
     }>) => {
       setSaving(true);
       const { error } = await supabase.from("process_flow_nodes").update(patch).eq("id", id);
@@ -476,8 +522,18 @@ function EditorInner() {
     }, 600);
   }, [flowId]);
 
-  const persistStrokes = useCallback((s: Stroke[]) => saveExtras({ strokes: s, labels }), [saveExtras, labels]);
-  const persistLabels = useCallback((l: FloatLabel[]) => saveExtras({ strokes, labels: l }), [saveExtras, strokes]);
+  const strokesRef = useRef<Stroke[]>([]);
+  const labelsRef = useRef<FloatLabel[]>([]);
+  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
+  useEffect(() => { labelsRef.current = labels; }, [labels]);
+  const persistStrokes = useCallback(
+    (s: Stroke[]) => saveExtras({ strokes: s, labels: labelsRef.current }),
+    [saveExtras],
+  );
+  const persistLabels = useCallback(
+    (l: FloatLabel[]) => saveExtras({ strokes: strokesRef.current, labels: l }),
+    [saveExtras],
+  );
 
   const handleColorChange = useCallback((id: string, cor: FlowColor) => {
     setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, cor } } : n)));
@@ -506,6 +562,11 @@ function EditorInner() {
   const handleEtapaChange = useCallback((id: string, etapa: EtapaTipo) => {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, etapa_tipo: etapa } } : n));
     updateNodeRemote(id, { etapa_tipo: etapa });
+  }, [setNodes, updateNodeRemote]);
+
+  const handleResize = useCallback((id: string, w: number, h: number) => {
+    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, largura: w, altura: h } } : n));
+    updateNodeRemote(id, { largura_px: w, altura_px: h });
   }, [setNodes, updateNodeRemote]);
 
   const commentTimer = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -552,6 +613,8 @@ function EditorInner() {
       red_flag: row.red_flag,
       duracao_estimada_minutes: row.duracao_estimada_minutes ?? null,
       etapa_tipo: (row.etapa_tipo ?? "intermediaria") as EtapaTipo,
+      largura: row.largura_px ?? undefined,
+      altura: row.altura_px ?? undefined,
       onColorChange: handleColorChange,
       onTextColorChange: handleTextColorChange,
       onRedFlagToggle: handleRedFlagToggle,
@@ -560,8 +623,9 @@ function EditorInner() {
       onDurationChange: handleDurationChange,
       onEtapaChange: handleEtapaChange,
       onCommentChange: handleCommentChange,
+      onResize: handleResize,
     } as NodeData as unknown as Record<string, unknown>,
-  }), [taskMap, handleColorChange, handleTextColorChange, handleRedFlagToggle, handleDeleteNode, handleOpenNode, handleDurationChange, handleEtapaChange, handleCommentChange]);
+  }), [taskMap, handleColorChange, handleTextColorChange, handleRedFlagToggle, handleDeleteNode, handleOpenNode, handleDurationChange, handleEtapaChange, handleCommentChange, handleResize]);
 
   useEffect(() => {
     if (loaded) return;
@@ -572,8 +636,13 @@ function EditorInner() {
       ]);
       setNodes((nRows ?? []).map(decorateNode));
       setEdges((eRows ?? []).map((e) => ({
-        id: e.id, source: e.source_node_id, target: e.target_node_id,
-        animated: false, style: { strokeWidth: 2 },
+        id: e.id,
+        source: e.source_node_id,
+        target: e.target_node_id,
+        type: "smoothstep",
+        markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+        animated: false,
+        style: { strokeWidth: 2 },
       })));
       setLoaded(true);
     })();
@@ -602,7 +671,14 @@ function EditorInner() {
       .insert({ flow_id: flowId, source_node_id: params.source, target_node_id: params.target })
       .select("id").single();
     if (error) { toast.error("Erro ao conectar", { description: error.message }); return; }
-    setEdges((eds) => addEdge({ ...params, id: data.id, animated: true, style: { strokeWidth: 2 } }, eds));
+    setEdges((eds) => addEdge({
+      ...params,
+      id: data.id,
+      animated: true,
+      type: "smoothstep",
+      markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+      style: { strokeWidth: 2 },
+    }, eds));
     setTimeout(() => setEdges((eds) => eds.map((e) => e.id === data.id ? { ...e, animated: false } : e)), 600);
   }, [flowId, setEdges]);
 
@@ -625,11 +701,21 @@ function EditorInner() {
     if (lanes.length > 0) {
       const idx = Math.max(0, Math.min(lanes.length - 1, Math.floor(node.position.y / LANE_HEIGHT)));
       lane_id = lanes[idx]?.id ?? null;
+      const snapMin = idx * LANE_HEIGHT + 20;
+      const snapMax = (idx + 1) * LANE_HEIGHT - 80;
+      const clampedY = Math.min(Math.max(node.position.y, snapMin), snapMax);
+      if (clampedY !== node.position.y) {
+        setNodes((nds) => nds.map((n) =>
+          n.id === node.id ? { ...n, position: { ...n.position, y: clampedY } } : n
+        ));
+        updateNodeRemote(node.id, { posicao_x: node.position.x, posicao_y: clampedY, lane_id });
+        return;
+      }
     }
     updateNodeRemote(node.id, {
       posicao_x: node.position.x, posicao_y: node.position.y, lane_id,
     });
-  }, [updateNodeRemote, lanes, persistLabels]);
+  }, [updateNodeRemote, lanes, persistLabels, setNodes]);
 
   async function addNoteNode() {
     const center = { x: 100 + Math.random() * 200, y: 100 + Math.random() * 200 };
@@ -662,16 +748,18 @@ function EditorInner() {
     setPickTaskOpen(false);
   }
 
-  function addFloatLabel() {
+  const addFloatLabel = useCallback(() => {
     const wrap = flowWrapper.current?.getBoundingClientRect();
     const p = wrap
       ? screenToFlowPosition({ x: wrap.left + wrap.width / 2, y: wrap.top + wrap.height / 2 })
       : { x: 200, y: 200 };
-    const next: FloatLabel = { id: crypto.randomUUID(), x: p.x, y: p.y, text: "Etiqueta", color: "#b45309" };
-    const arr = [...labels, next];
-    setLabels(arr);
-    persistLabels(arr);
-  }
+    const next: FloatLabel = { id: crypto.randomUUID(), x: p.x, y: p.y, text: "Nova etiqueta", color: "#b45309" };
+    setLabels((ls) => {
+      const arr = [...ls, next];
+      persistLabels(arr);
+      return arr;
+    });
+  }, [screenToFlowPosition, persistLabels]);
 
   const updateLabel = useCallback((id: string, patch: Partial<FloatLabel>) => {
     setLabels((ls) => {
