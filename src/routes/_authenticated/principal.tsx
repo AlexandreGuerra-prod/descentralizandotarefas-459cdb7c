@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Plus, Search, Download, Upload, ChevronDown, ChevronRight } from "lucide-react";
 import { TaskCard } from "@/components/TaskCard";
-import { addToDateISO, sortTasks, todayISO, type Task } from "@/lib/task-utils";
+import { addToDateISO, applySortMode, todayISO, type SortMode, type Task } from "@/lib/task-utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -22,6 +23,7 @@ function Principal() {
   const [search, setSearch] = useState("");
   const [showNext7, setShowNext7] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("prioridade");
 
   const today = todayISO();
   const { data: tasks = [], isLoading } = useQuery({
@@ -52,9 +54,9 @@ function Principal() {
     );
   }, [tasks, search]);
 
-  const todayTasks = sortTasks(filtered.filter((t) => t.status === "pendente" && t.data <= today));
-  const upcoming = sortTasks(filtered.filter((t) => t.status === "pendente" && t.data > today && t.data <= next7ISO));
-  const doneToday = sortTasks(filtered.filter((t) => t.status === "concluida"));
+  const todayTasks = applySortMode(filtered.filter((t) => t.status === "pendente" && t.data <= today), sortMode);
+  const upcoming = applySortMode(filtered.filter((t) => t.status === "pendente" && t.data > today && t.data <= next7ISO), sortMode);
+  const doneToday = applySortMode(filtered.filter((t) => t.status === "concluida"), sortMode);
 
   const toggleMutation = useMutation({
     mutationFn: async ({ task, solucao }: { task: Task; solucao?: string }) => {
@@ -224,6 +226,18 @@ function Principal() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Ordenar por:</span>
+        <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+          <SelectTrigger className="w-[200px] h-8"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="prioridade">Prioridade</SelectItem>
+            <SelectItem value="numero-asc">Número ↑ (crescente)</SelectItem>
+            <SelectItem value="numero-desc">Número ↓ (decrescente)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
