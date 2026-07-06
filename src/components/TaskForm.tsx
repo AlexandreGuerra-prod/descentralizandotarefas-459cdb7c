@@ -100,7 +100,7 @@ export function TaskForm({ taskId }: { taskId?: string }) {
       if (!taskId) return [];
       const { data, error } = await supabase
         .from("notes")
-        .select("id, titulo, updated_at")
+        .select("id, title, updated_at")
         .eq("task_id", taskId)
         .order("updated_at", { ascending: false });
       if (error) throw error;
@@ -422,9 +422,9 @@ export function TaskForm({ taskId }: { taskId?: string }) {
                       to="/anotacoes"
                       search={{ taskId, titulo, numero: existing?.numero ?? undefined }}
                       className="truncate hover:underline"
-                      title={n.titulo}
+                      title={n.title}
                     >
-                      {n.titulo || "(sem título)"}
+                      {n.title || "(sem título)"}
                       <span className="text-xs text-muted-foreground ml-2">
                         {new Date(n.updated_at).toLocaleDateString("pt-BR")}
                       </span>
@@ -433,7 +433,7 @@ export function TaskForm({ taskId }: { taskId?: string }) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => setNoteToDelete({ id: n.id, titulo: n.titulo })}
+                      onClick={() => setNoteToDelete({ id: n.id, titulo: n.title })}
                       className="text-destructive"
                       title="Excluir nota"
                     >
