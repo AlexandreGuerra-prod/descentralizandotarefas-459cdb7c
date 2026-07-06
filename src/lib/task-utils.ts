@@ -88,3 +88,22 @@ export function sortTasks(tasks: Task[]): Task[] {
     return ad - bd;
   });
 }
+
+export type SortMode = "prioridade" | "numero-asc" | "numero-desc";
+
+export function sortTasksByNumero(tasks: Task[], dir: "asc" | "desc"): Task[] {
+  return [...tasks].sort((a, b) => {
+    const an = a.numero;
+    const bn = b.numero;
+    if (an == null && bn == null) return 0;
+    if (an == null) return 1;
+    if (bn == null) return -1;
+    return dir === "asc" ? an - bn : bn - an;
+  });
+}
+
+export function applySortMode(tasks: Task[], mode: SortMode): Task[] {
+  if (mode === "numero-asc") return sortTasksByNumero(tasks, "asc");
+  if (mode === "numero-desc") return sortTasksByNumero(tasks, "desc");
+  return sortTasks(tasks);
+}

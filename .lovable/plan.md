@@ -1,55 +1,59 @@
-## Objetivo
+## Refinamentos finais — tarefas, anexos e notas vinculadas
 
-1. Cada tarefa recebe um **número classificador automático** por usuário, exibido no card.
-2. No card, adicionar botão **"Nota"** que cria/abre uma anotação vinculada à tarefa.
-3. Anexos passam a ter ícone de **olho** para visualizar imagem/documento em nova aba.
-4. No formulário, mostrar aviso do **tamanho máximo (10 MB)** por arquivo.
+### 1. Ordenação por número (lista de tarefas) — `src/routes/_authenticated/principal.tsx` + `src/lib/task-utils.ts`
 
-Nada além disso é alterado — sem refatoração.
+- Adicionar em `task-utils.ts` um helper `sortTasksByNumero(tasks, dir: "asc" | "desc")` que ordena por `numero` (tratando `null` no fim).
+- Em `principal.tsx`, adicionar estado `sortMode: "prioridade" | "numero-asc" | "numero-desc"` (default: `"prioridade"` — mantém comportamento atual).
+- Renderizar um `<Select>` compacto ao lado do campo de busca ("Ordenar por: Prioridade / Número ↑ / Número ↓").
+- Aplicar `sortMode` a `todayTasks`, `upcoming` e `doneToday` (as três listas da tela). Historico/agenda ficam de fora — o pedido é sobre "lista de tarefas" (principal).
 
----
+### 2. Validação hard de 10 MB — `src/components/TaskForm.tsx`
 
-## Banco de dados (uma migração)
+Atualmente `onFiles` já bloqueia via `input type=file`, mas **não trata paste de imagens** nem exibe o nome do arquivo bloqueado de forma consistente:
 
-- `public.tasks`: adicionar coluna `numero bigint`.
-  - Sequência por usuário via função + trigger `BEFORE INSERT`: `SELECT COALESCE(MAX(numero),0)+1 FROM tasks WHERE user_id = NEW.user_id` (com `advisory lock` por `user_id` para evitar corrida). Preenche automaticamente se `NEW.numero IS NULL`.
-  - Backfill das tarefas existentes por usuário, ordenando por `created_at`.
-  - Índice único `(user_id, numero)`.
-- `public.notes`: adicionar `task_id uuid` (nullable) com FK `REFERENCES public.tasks(id) ON DELETE SET NULL` e índice.
-- RLS/policies existentes já cobrem `user_id`; nada a mudar.
+- Extrair `validateSize(file)` helper local que emite o toast `"O arquivo <nome> é maior que 10MB e foi bloqueado"` e retorna boolean.
+- `onFiles`: em vez de `return` no primeiro arquivo grande, filtrar apenas os que passam e adicionar o resto (não descartar todos por causa de um).
+- `handlePaste`: aplicar a mesma validação antes de anexar imagem colada.
 
-## Frontend
+### 3. Visualizador de anexos in-app (Modal) — `src/components/TaskForm.tsx`
 
-### `src/components/TaskCard.tsx`
-- Exibir `#{task.numero}` como badge/rótulo pequeno ao lado do título.
-- Adicionar botão **"Nota"** (ícone `StickyNote` do lucide) entre Editar e Avisar. Clique navega para `/anotacoes?taskId=<id>&titulo=<titulo>`.
+- Novo estado `preview: { url: string; name: string; mime: string } | null`.
+- `viewAttachment(att)` passa a receber o registro completo: gera signed URL (validade ~5 min) e abre o `Dialog` em vez de `window.open`.
+- Dentro do `Dialog` (largura `max-w-4xl`, altura viewport):
+  - `image/*` → `<img src={url} class="max-h-[80vh] w-auto mx-auto" />`
+  - `application/pdf` → `<iframe src={url} class="w-full h-[80vh]" />`
+  - `text/*` → `<iframe>` também funciona
+  - Outros mimes → mensagem "Pré-visualização não disponível" + botões **Abrir em nova aba** e **Baixar** (via link com `download`).
+- Rodapé do Dialog sempre com botão **Abrir em nova aba** (fallback universal) e **Fechar**.
 
-### `src/routes/_authenticated/anotacoes.tsx`
-- Ler `taskId` e `titulo` de `useSearch`.
-- Se `taskId` presente e ainda não houver nota selecionada para essa tarefa:
-  - buscar `notes` com `task_id = taskId`; se existir, selecionar a mais recente; senão, criar uma nova nota já com `task_id` preenchido e `title` = "Nota — {titulo da tarefa}".
-- Renderizar um chip "Vinculada à tarefa #{numero} — {titulo}" no topo do editor da nota, com link para `/cadastro/{taskId}`.
+### 4. Notas vinculadas listadas no TaskForm — `src/components/TaskForm.tsx`
 
-### `src/components/TaskForm.tsx`
-- Já existente: constante `MAX_FILE = 10 MB`. Exibir texto auxiliar visível: *"Tamanho máximo por arquivo: 10 MB. Formatos comuns aceitos (imagens, PDF, docs)."*
-- Listar anexos já salvos da tarefa (query em `task_attachments` por `task_id`), com:
-  - ícone **olho** que chama `supabase.storage.from('task-attachments').createSignedUrl(path, 60)` e abre em nova aba.
-  - manter listagem dos arquivos pendentes (ainda não enviados) como hoje.
+Só faz sentido em modo edição (`taskId` existe). Reaproveita a coluna `notes.task_id` já criada.
 
-### `src/lib/task-utils.ts`
-- Tipagem `Task` é gerada automaticamente a partir de `types.ts` — sem edição manual.
+- Nova `useQuery(["task-notes", taskId])` que faz `select("id, titulo, updated_at").eq("task_id", taskId).order("updated_at", { ascending: false })`. `enabled: !!taskId`.
+- Nova seção "Notas vinculadas" (abaixo de "Anexos"), visível só quando `taskId`:
+  - Lista com título + data (`toLocaleDateString("pt-BR")`).
+  - Título clicável → `<Link to="/anotacoes" search={{ taskId, titulo, numero }}>` (mesmo padrão que já abre a nota linkada existente na tela de anotações).
+  - Botão ícone `Trash2` por linha → abre um `AlertDialog` de confirmação (padrão do projeto, sem `confirm()` nativo) → `supabase.from("notes").delete().eq("id", noteId)` → invalida `["task-notes", taskId]` + toast.
+- Se `notes.length === 0`, mostrar linha discreta "Nenhuma nota vinculada" com um link "Criar nota" para `/anotacoes` (mesma rota do botão do TaskCard).
 
-## Validação
+### Detalhes técnicos
 
-- Criar tarefa nova → aparece `#N` no card, N+1 na próxima.
-- Clicar "Nota" no card → abre `/anotacoes` com nota nova vinculada; ao voltar e clicar de novo, abre a mesma nota.
-- Editar tarefa com anexo → botão olho abre o arquivo em nova aba.
-- Tentar anexar arquivo >10 MB → toast de erro (já existe) e o aviso de limite fica visível ao lado do campo.
+- Nenhuma migração de banco. Todas as colunas necessárias (`tasks.numero`, `notes.task_id`) já existem.
+- Sem novos pacotes; `Dialog` e `AlertDialog` do shadcn já estão no projeto.
+- Preview de anexos via `createSignedUrl(path, 300)` (5 min, suficiente enquanto o modal fica aberto).
+- Textos em pt-BR. Confirmação de exclusão via `AlertDialog` (regra do workspace: nada de `confirm()`).
 
-## Fora do escopo
+### Arquivos alterados
 
-- Reordenar/renumerar manualmente.
-- Múltiplas notas por tarefa com seletor (será sempre "a mais recente vinculada" ou uma nova).
-- Preview embutido de PDF/imagem no próprio formulário (abrir em nova aba já resolve).
+- `src/lib/task-utils.ts` (+ helper de ordenação por número)
+- `src/routes/_authenticated/principal.tsx` (controle de ordenação)
+- `src/components/TaskForm.tsx` (validação hard, modal de preview, seção de notas vinculadas)
 
-Confirma que posso implementar exatamente isso?
+### Validação
+
+- Selecionar "Número ↓" → cards renderizam com `#N` decrescente em todas as 3 seções.
+- Selecionar arquivo >10 MB → toast de bloqueio, arquivo não entra na lista; arquivos <10 MB no mesmo select continuam sendo adicionados.
+- Colar imagem grande com Ctrl+V → mesmo toast, nada é anexado.
+- Clicar no olho de uma imagem → modal abre com `<img>`; PDF abre em `<iframe>`; `.docx` mostra fallback com botão de abrir/baixar.
+- Editar tarefa com nota vinculada → seção "Notas vinculadas" lista o título e permite excluir com confirmação; após excluir, some da lista.
