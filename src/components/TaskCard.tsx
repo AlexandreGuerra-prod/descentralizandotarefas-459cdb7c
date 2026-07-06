@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Copy, Pencil, Trash2, Mail, MessageCircle, AlertTriangle, Repeat, Clock, Siren } from "lucide-react";
+import { Copy, Pencil, Trash2, Mail, MessageCircle, AlertTriangle, Repeat, Clock, Siren, StickyNote } from "lucide-react";
 import { priorityClasses, PRIORITY_LABEL, RECURRENCE_LABEL, isOverdueOrSoon, type Task } from "@/lib/task-utils";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,11 @@ export function TaskCard({ task, onToggle, onDelete, onCopy }: Props) {
               {urgent && task.status === "pendente" && (
                 <Siren className="h-5 w-5 siren-blink shrink-0" aria-label="Alerta de prioridade" />
               )}
+              {task.numero != null && (
+                <span className="text-xs font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 shrink-0">
+                  #{task.numero}
+                </span>
+              )}
               {task.titulo}
             </h3>
             <div className="flex gap-1 flex-wrap">
@@ -110,6 +115,14 @@ export function TaskCard({ task, onToggle, onDelete, onCopy }: Props) {
             <Button size="sm" variant="ghost" onClick={copyText}><Copy className="h-3 w-3 mr-1" />Copiar</Button>
             <Button size="sm" variant="ghost" asChild>
               <Link to="/cadastro/$id" params={{ id: task.id }}><Pencil className="h-3 w-3 mr-1" />Editar</Link>
+            </Button>
+            <Button size="sm" variant="ghost" asChild>
+              <Link
+                to="/anotacoes"
+                search={{ taskId: task.id, titulo: task.titulo, numero: task.numero ?? undefined }}
+              >
+                <StickyNote className="h-3 w-3 mr-1" />Nota
+              </Link>
             </Button>
             <Button size="sm" variant="ghost" onClick={avisarEmail}><Mail className="h-3 w-3 mr-1" />Avisar</Button>
             <Button size="sm" variant="ghost" onClick={avisarWhatsapp}><MessageCircle className="h-3 w-3 mr-1" />WhatsApp</Button>
