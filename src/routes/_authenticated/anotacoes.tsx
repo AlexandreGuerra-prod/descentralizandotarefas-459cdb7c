@@ -472,6 +472,18 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
         </div>
       </div>
 
+      {note.task_id && (
+        <div className="text-xs">
+          <Link
+            to="/cadastro/$id"
+            params={{ id: note.task_id }}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 hover:bg-muted"
+          >
+            <FileText className="h-3 w-3" /> Vinculada a uma tarefa — abrir tarefa
+          </Link>
+        </div>
+      )}
+
       <Input
         value={title}
         onChange={(e) => { setTitle(e.target.value); scheduleSave(); }}
