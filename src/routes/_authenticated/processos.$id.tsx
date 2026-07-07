@@ -47,15 +47,19 @@ export const Route = createFileRoute("/_authenticated/processos/$id")({
 });
 
 type FlowColor = "blue" | "coral" | "red" | "green" | "amber" | "purple" | "teal" | "pink" | "gray";
-type EtapaTipo = "inicio" | "intermediaria" | "fim";
+type EtapaTipo = "inicio" | "intermediaria" | "fim" | "decisao";
 type TextColor = "black" | "slate" | "blue" | "red" | "green";
-const ETAPA_LABEL: Record<EtapaTipo, string> = { inicio: "Início", intermediaria: "Intermediária", fim: "Fim" };
+const ETAPA_LABEL: Record<EtapaTipo, string> = { inicio: "Início", intermediaria: "Intermediária", fim: "Fim", decisao: "Decisão" };
 
 const LANE_HEIGHT = 240;
 /** Fallback usado só antes do 1º layout (sem nós ainda) — depois disso a largura real vem de laneWidth. */
 const LANE_WIDTH_FALLBACK = 1200;
 /** Paleta forte o bastante pra não se perder no fundo do canvas (#fafafa), cicla por índice da raia. */
 const LANE_BG = ["#dbeafe", "#fef3c7", "#ede9fe", "#dcfce7", "#fee2e2", "#e0f2fe"];
+/** Tom mais saturado da mesma família de cor de LANE_BG (mesmo índice), pra
+ * célula de cabeçalho — evita ter que calcular a cor em runtime. */
+const LANE_HEADER_BG = ["#93c5fd", "#fcd34d", "#c4b5fd", "#86efac", "#fca5a5", "#7dd3fc"];
+const LANE_HEADER_WIDTH = 160;
 const MAX_PASTE_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB, mesmo teto do TaskForm
 
 const COLOR_BG: Record<FlowColor, string> = {
@@ -135,13 +139,9 @@ type NodeData = {
 function FlowNode({ id, data, selected }: NodeProps) {
   const d = data as unknown as NodeData;
   const isComment = d.tipo === "comentario";
-  const etapaClass = isComment
-    ? "border-dashed"
-    : d.etapa_tipo === "inicio"
-      ? "border-l-8 border-l-green-500"
-      : d.etapa_tipo === "fim"
-        ? "border-r-8 border-r-red-500 ring-1 ring-red-300"
-        : "";
+  const isDecision = !isComment && d.etapa_tipo === "decisao";
+  const isStadium = !isComment && (d.etapa_tipo === "inicio" || d.etapa_tipo === "fim");
+  const etapaClass = isComment ? "border-dashed" : "";
   const textColor = TEXT_COLOR[d.cor_texto ?? "black"];
   const bg = isComment ? "#ffffff" : COLOR_BG[d.cor];
   const border = isComment ? "#94a3b8" : COLOR_BORDER[d.cor];
@@ -150,6 +150,9 @@ function FlowNode({ id, data, selected }: NodeProps) {
     fontWeight: d.negrito ? 700 : undefined,
     textShadow: d.sombra ? "1px 1px 2px rgba(0,0,0,0.35)" : undefined,
   };
+  const actionsClass = isDecision
+    ? `absolute bottom-1 inset-x-0 z-20 justify-center gap-1 nodrag ${selected ? "flex" : "hidden group-hover:flex"}`
+    : "flex justify-end gap-1 px-1 pb-1 nodrag";
 
   // Nota: os Handles do React Flow ficam posicionados PELA METADE fora da
   // borda (translate 50%) — se o overflow/resize morar no MESMO elemento
@@ -163,10 +166,11 @@ function FlowNode({ id, data, selected }: NodeProps) {
       <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
       <div
-        className={`rounded-lg border-2 shadow-sm relative ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
+        className={`group border-2 shadow-sm relative ${isStadium ? "" : "rounded-lg"} ${etapaClass} ${selected ? "ring-2 ring-blue-500 ring-offset-2 shadow-lg" : ""}`}
         style={{
-          background: bg,
-          borderColor: border,
+          background: isDecision ? "transparent" : bg,
+          borderColor: isDecision ? "transparent" : border,
+          borderRadius: isStadium ? 9999 : undefined,
           color: textColor,
           width: d.largura ?? 200,
           height: d.altura,
@@ -185,9 +189,24 @@ function FlowNode({ id, data, selected }: NodeProps) {
         }}
       >
       {d.red_flag && (
-        <Flag className="absolute -top-2 -right-2 h-5 w-5 text-red-600 fill-red-600 drop-shadow" />
+        <Flag className="absolute -top-2 -right-2 h-5 w-5 text-red-600 fill-red-600 drop-shadow z-20" />
       )}
-      <div className="px-3 py-2 cursor-pointer" onClick={() => d.onOpen(id)}>
+      {isDecision ? (
+        <>
+          <div
+            className="absolute inset-0 m-auto"
+            style={{ width: "70.7%", height: "70.7%", transform: "rotate(45deg)", background: bg, border: `2px solid ${border}`, zIndex: 0 }}
+          />
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-center px-6 cursor-pointer" onClick={() => d.onOpen(id)}>
+            <div className="text-sm font-medium whitespace-pre-wrap break-words" style={contentTextStyle}>
+              {d.tipo === "tarefa"
+                ? d.taskTitulo ?? (d.task_id ? "(tarefa)" : "Sem tarefa vinculada")
+                : d.texto || "(decisão)"}
+            </div>
+          </div>
+        </>
+      ) : (
+      <div className={`py-2 cursor-pointer ${isStadium ? "px-4" : "px-3"}`} onClick={() => d.onOpen(id)}>
         <div className="text-[10px] uppercase font-semibold opacity-60 flex items-center gap-1">
           {isComment ? <MessageSquare className="h-3 w-3" /> : d.tipo === "tarefa" ? <ListTodo className="h-3 w-3" /> : <StickyNote className="h-3 w-3" />}
           {isComment ? "comentário" : `${d.tipo} · ${ETAPA_LABEL[d.etapa_tipo]}`}
@@ -208,7 +227,8 @@ function FlowNode({ id, data, selected }: NodeProps) {
           </div>
         )}
       </div>
-      <div className="flex justify-end gap-1 px-1 pb-1 nodrag">
+      )}
+      <div className={actionsClass}>
         <Popover>
           <PopoverTrigger asChild>
             <Button size="icon" variant="ghost" className="h-6 w-6"><Palette className="h-3 w-3" /></Button>
@@ -279,6 +299,7 @@ function FlowNode({ id, data, selected }: NodeProps) {
                     <SelectItem value="inicio">▶ Início</SelectItem>
                     <SelectItem value="intermediaria">● Intermediária</SelectItem>
                     <SelectItem value="fim">■ Fim</SelectItem>
+                    <SelectItem value="decisao">◆ Decisão</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -304,7 +325,7 @@ function FlowNode({ id, data, selected }: NodeProps) {
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
-      {!isComment && (
+      {!isComment && d.etapa_tipo !== "decisao" && (
         <div className="flex border-t border-current/10 nodrag">
           {(["inicio", "intermediaria", "fim"] as EtapaTipo[]).map((et) => (
             <button
@@ -336,17 +357,25 @@ function FlowNode({ id, data, selected }: NodeProps) {
 function LaneNode({ data }: NodeProps) {
   const d = data as unknown as { nome: string; tipo: "responsavel" | "fase"; index: number; width: number };
   const bg = LANE_BG[d.index % LANE_BG.length];
+  const headerBg = LANE_HEADER_BG[d.index % LANE_HEADER_BG.length];
   return (
     <div
       style={{ width: d.width, height: LANE_HEIGHT, background: bg }}
-      className="border-b-2 border-dashed border-foreground/30"
+      className="relative border-b-2 border-solid border-foreground/30"
     >
       {/* Nota: position:sticky não funciona aqui — .react-flow__viewport usa
           transform CSS pra pan/zoom, e transform em ancestral quebra sticky
-          (comportamento de spec do CSS, não bug de implementação). O rótulo
-          fica fixo no início da raia em vez de acompanhar o scroll. */}
-      <div className="inline-block px-3 py-1 m-2 text-xs font-semibold text-foreground bg-white/90 border border-slate-300 rounded shadow-sm">
-        {d.nome} <span className="opacity-60 ml-1">· {d.tipo === "responsavel" ? "Responsável" : "Fase"}</span>
+          (comportamento de spec do CSS, não bug de implementação). A célula
+          de cabeçalho fica fixa no início da raia em vez de acompanhar o
+          scroll. */}
+      <div
+        style={{ width: LANE_HEADER_WIDTH, height: "100%", background: headerBg }}
+        className="absolute left-0 top-0 border-r-2 border-solid border-foreground/30 flex flex-col items-center justify-center text-center px-2 gap-0.5"
+      >
+        <div className="text-xs font-semibold text-foreground">{d.nome}</div>
+        <div className="text-[10px] uppercase font-medium text-foreground/70 bg-white/60 px-1.5 py-0.5 rounded">
+          {d.tipo === "responsavel" ? "Responsável" : "Fase"}
+        </div>
       </div>
     </div>
   );
@@ -736,6 +765,9 @@ function EditorInner() {
   const [taskCardOpen, setTaskCardOpen] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
+  const [edgeLabelDialogOpen, setEdgeLabelDialogOpen] = useState(false);
+  const [edgeLabelEditId, setEdgeLabelEditId] = useState<string | null>(null);
+  const [edgeLabelText, setEdgeLabelText] = useState("");
 
   // Drawing & annotations (persisted em bloco em process_flows.canvas_extras)
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -1037,8 +1069,19 @@ function EditorInner() {
   }, [setNodes, updateNodeRemote]);
 
   const handleEtapaChange = useCallback((id: string, etapa: EtapaTipo) => {
-    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, etapa_tipo: etapa } } : n));
-    updateNodeRemote(id, { etapa_tipo: etapa });
+    setNodes((nds) => nds.map((n) => {
+      if (n.id !== id) return n;
+      const d = n.data as unknown as NodeData;
+      // Losango de decisão precisa de mais espaço pro texto — só aplica o
+      // tamanho maior se o usuário ainda não redimensionou o nó manualmente.
+      const growForDecision = etapa === "decisao" && d.largura == null && d.altura == null;
+      const sizePatch = growForDecision ? { largura: 180, altura: 120 } : {};
+      updateNodeRemote(id, {
+        etapa_tipo: etapa,
+        ...(growForDecision ? { largura_px: 180, altura_px: 120 } : {}),
+      });
+      return { ...n, data: { ...n.data, etapa_tipo: etapa, ...sizePatch } };
+    }));
   }, [setNodes, updateNodeRemote]);
 
   const handleResize = useCallback((id: string, w: number, h: number) => {
@@ -1131,6 +1174,7 @@ function EditorInner() {
         markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
         animated: false,
         style: { strokeWidth: 2 },
+        label: e.label ?? undefined,
       })));
       setLoaded(true);
     })();
@@ -1178,6 +1222,22 @@ function EditorInner() {
     pushHistory();
     for (const e of deleted) await supabase.from("process_flow_edges").delete().eq("id", e.id);
   }, [pushHistory]);
+
+  const onEdgeDoubleClick = useCallback((_: unknown, edge: Edge) => {
+    setEdgeLabelEditId(edge.id);
+    setEdgeLabelText(typeof edge.label === "string" ? edge.label : "");
+    setEdgeLabelDialogOpen(true);
+  }, []);
+
+  async function saveEdgeLabel() {
+    if (!edgeLabelEditId) return;
+    const value = edgeLabelText.trim() || null;
+    const { error } = await supabase.from("process_flow_edges").update({ label: value }).eq("id", edgeLabelEditId);
+    if (error) { toast.error("Erro ao rotular seta", { description: error.message }); return; }
+    setEdges((eds) => eds.map((e) => e.id === edgeLabelEditId ? { ...e, label: value ?? undefined } : e));
+    setEdgeLabelDialogOpen(false);
+    setEdgeLabelEditId(null);
+  }
 
   const onNodeDragStop = useCallback((_: unknown, node: Node) => {
     if (node.type === "lane") return;
@@ -1794,8 +1854,19 @@ function EditorInner() {
         </span>
       </div>
 
-      <div ref={flowWrapper} className="rf-wrapper border rounded-lg relative overflow-hidden"
+      <div ref={flowWrapper} className={`rf-wrapper rounded-lg relative overflow-hidden ${
+          tool !== "select" ? "border-2 border-dashed border-amber-500" : "border"
+        }`}
         style={{ height: "calc(100vh - 380px)", minHeight: 500, background: "#fafafa" }}>
+        {tool !== "select" && (
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-amber-500 text-white text-xs font-semibold pl-3 pr-1.5 py-1.5 rounded-full shadow-lg">
+            <Pencil className="h-3.5 w-3.5" />
+            Modo desenho
+            <Button size="sm" variant="secondary" className="h-6 px-2 text-amber-700" onClick={() => setTool("select")}>
+              Sair
+            </Button>
+          </div>
+        )}
         <ReactFlow
           nodes={allNodes}
           edges={edges}
@@ -1803,6 +1874,7 @@ function EditorInner() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgesDelete={onEdgesDelete}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onNodesDelete={onNodesDelete}
           onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
@@ -1853,6 +1925,23 @@ function EditorInner() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>Cancelar</Button>
             <Button onClick={saveNoteText}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={edgeLabelDialogOpen} onOpenChange={setEdgeLabelDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Rotular seta</DialogTitle></DialogHeader>
+          <Input
+            value={edgeLabelText}
+            onChange={(e) => setEdgeLabelText(e.target.value)}
+            placeholder="Ex.: Sim, Não, Aprovado..."
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter") saveEdgeLabel(); }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEdgeLabelDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveEdgeLabel}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
