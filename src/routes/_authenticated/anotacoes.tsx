@@ -17,6 +17,7 @@ import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Palette, Plus, Search, Trash2, Download, Share2, X, FileText, FileCode,
   List, ArrowRight, CheckSquare, Type, ChevronDown, ChevronRight,
+  Highlighter, Eraser, Link2, Link2Off,
 } from "lucide-react";
 import { MicButton } from "@/components/MicButton";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ type Note = {
 };
 
 const COLORS = ["#ef4444", "#f59e0b", "#eab308", "#10b981", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#111827", "#ffffff"];
+const HIGHLIGHTS = ["#fef08a", "#fecaca", "#bbf7d0", "#bfdbfe", "#e9d5ff", "#fed7aa", "#fbcfe8", "#e5e7eb"];
 
 function htmlToText(html: string) {
   if (typeof document === "undefined") return html.replace(/<[^>]*>/g, "");
