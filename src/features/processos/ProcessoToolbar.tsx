@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Flag } from "lucide-react";
+import { Flag, Bold } from "lucide-react";
 import type { SelectedCell } from "./drawioProtocol";
 import {
   COLORS,
@@ -28,6 +28,8 @@ const ETAPA_LABEL: Record<EtapaTipo, string> = {
   fim: "Fim",
   decisao: "Decisão",
 };
+
+const FONT_SIZES = [12, 14, 16, 20, 24, 32, 48] as const;
 
 type Props = {
   selectedCells: SelectedCell[];
@@ -62,28 +64,36 @@ export function ProcessoToolbar({ selectedCells, onUpdateCell }: Props) {
   const redFlag = cell.attrs.red_flag === "1";
   const duracao = cell.attrs.duracao_estimada_minutes ?? "";
   const notaSecundaria = cell.attrs.nota_secundaria ?? "";
+  const negrito = cell.attrs.negrito === "1";
+  const sombra = cell.attrs.sombra === "1";
+  const fontSize = cell.attrs.font_size ?? "";
 
-  function patch(
-    nextAttrs: Partial<
-      Record<
-        | "cor"
-        | "cor_texto"
-        | "etapa_tipo"
-        | "red_flag"
-        | "duracao_estimada_minutes"
-        | "nota_secundaria",
-        string
-      >
-    >,
-  ) {
+  type PatchableAttr =
+    | "cor"
+    | "cor_texto"
+    | "etapa_tipo"
+    | "red_flag"
+    | "duracao_estimada_minutes"
+    | "nota_secundaria"
+    | "negrito"
+    | "sombra"
+    | "font_size";
+
+  function patch(nextAttrs: Partial<Record<PatchableAttr, string>>) {
     const nextCor = (nextAttrs.cor as FlowColor) ?? cor;
     const nextCorTexto = (nextAttrs.cor_texto as TextColor) ?? corTexto;
     const nextEtapaTipo = (nextAttrs.etapa_tipo as EtapaTipo) ?? etapaTipo;
+    const nextNegrito = nextAttrs.negrito ?? (negrito ? "1" : "0");
+    const nextSombra = nextAttrs.sombra ?? (sombra ? "1" : "0");
+    const nextFontSize = nextAttrs.font_size ?? fontSize;
     const style = shapeStyleFor({
       tipo,
       cor: nextCor,
       corTexto: nextCorTexto,
       etapaTipo: nextEtapaTipo,
+      negrito: nextNegrito === "1",
+      sombra: nextSombra === "1",
+      fontSize: nextFontSize ? Number(nextFontSize) : null,
     });
     onUpdateCell(cellId, { style, attrs: nextAttrs });
   }
@@ -161,6 +171,47 @@ export function ProcessoToolbar({ selectedCells, onUpdateCell }: Props) {
           defaultValue={notaSecundaria}
           onBlur={(e) => patch({ nota_secundaria: e.target.value })}
         />
+      </div>
+
+      <div>
+        <Label className="text-xs">Tamanho do texto</Label>
+        <Select
+          value={fontSize || "auto"}
+          onValueChange={(v) => patch({ font_size: v === "auto" ? "" : v })}
+        >
+          <SelectTrigger className="h-8">
+            <SelectValue placeholder="Padrão" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Padrão</SelectItem>
+            {FONT_SIZES.map((s) => (
+              <SelectItem key={s} value={String(s)}>
+                {s}px
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant={negrito ? "default" : "outline"}
+          className="flex-1"
+          onClick={() => patch({ negrito: negrito ? "0" : "1" })}
+          title="Negrito"
+        >
+          <Bold className="h-3 w-3" />
+        </Button>
+        <Button
+          size="sm"
+          variant={sombra ? "default" : "outline"}
+          className="flex-1"
+          onClick={() => patch({ sombra: sombra ? "0" : "1" })}
+          title="Sombra"
+        >
+          <span style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.6)" }}>S</span>
+        </Button>
       </div>
 
       <Button

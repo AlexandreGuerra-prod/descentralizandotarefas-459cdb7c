@@ -2,11 +2,88 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   buildFlowXml,
   emptyFlowXml,
+  type CanvasImageInput,
+  type CanvasShapeInput,
+  type CanvasStrokeInput,
+  type CanvasTextBoxInput,
   type FlowEdgeInput,
   type FlowLaneInput,
   type FlowNodeInput,
 } from "./xmlMapping";
 import type { FlowColor, TextColor } from "./colorPalette";
+
+// Formato do blob canvas_extras salvo pelo editor React Flow antigo —
+// replicado aqui só pra ler os dados na migração (não é mais escrito por
+// nenhum código novo).
+type LegacyCanvasExtras = {
+  strokes?: {
+    id: string;
+    color: string;
+    width: number;
+    opacity: number;
+    points: [number, number][];
+  }[];
+  labels?: { id: string; x: number; y: number; text: string; color?: string }[];
+  shapes?: {
+    id: string;
+    kind: "rect" | "ellipse" | "line" | "arrow";
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: string;
+    fill: string | null;
+    width: number;
+    opacity: number;
+  }[];
+  textboxes?: {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    text: string;
+    color: string;
+    fontFamily: string;
+    fontSize: number;
+    orientation: "horizontal" | "vertical";
+  }[];
+  images?: { id: string; x: number; y: number; w: number; h: number; storagePath: string }[];
+};
+
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Baixa cada imagem colada do bucket privado (task-attachments — URLs
+ * assinadas expiram em 1h, não dá pra referenciar por URL direta num XML
+ * que devia ser permanente) e embute como data URI. Roda em paralelo;
+ * imagens que falharem ao baixar são simplesmente omitidas (log no
+ * console) em vez de derrubar a migração inteira do fluxo. */
+async function resolveImages(images: LegacyCanvasExtras["images"]): Promise<CanvasImageInput[]> {
+  if (!images || images.length === 0) return [];
+
+  const resolved = await Promise.all(
+    images.map(async (img): Promise<CanvasImageInput | null> => {
+      const { data, error } = await supabase.storage
+        .from("task-attachments")
+        .download(img.storagePath);
+      if (error || !data) {
+        console.warn(`[migrateLegacyFlow] falha ao baixar imagem ${img.storagePath}:`, error);
+        return null;
+      }
+      const dataUri = await blobToDataUri(data);
+      return { id: img.id, x: img.x, y: img.y, w: img.w, h: img.h, dataUri };
+    }),
+  );
+
+  return resolved.filter((img): img is CanvasImageInput => img != null);
+}
 
 /**
  * Migração única (lazy, por fluxo) das tabelas relacionais antigas
@@ -14,13 +91,13 @@ import type { FlowColor, TextColor } from "./colorPalette";
  * Fase 3 do plano. Chamada pelo loader de /processos/$id quando
  * drawio_xml ainda é null.
  *
- * Escopo desta primeira versão: nós, raias e arestas migram por
- * completo (mapeamento bem definido, ver xmlMapping.ts). O desenho livre
- * (canvas_extras.strokes/shapes/images) NÃO migra ainda — a serialização
- * exata que o draw.io usa pro traço de lápis precisa ser verificada
- * empiricamente antes de gerar XML pra isso (ver Fase 0 do plano,
- * item ainda pendente). Labels/textboxes migram como notas de texto
- * simples, que é um mapeamento direto e seguro.
+ * Nós, raias, arestas e todo o desenho livre (traços, formas, caixas de
+ * texto, imagens coladas) migram. Traços de lápis viram arestas com
+ * múltiplos pontos em vez do formato nativo de stencil comprimido do
+ * draw.io (não reproduzível de forma confiável sem reimplementar o
+ * algoritmo de compressão deles) — visualmente idêntico, já que o editor
+ * antigo também desenhava os traços como polilinhas retas, sem
+ * suavização (confirmado renderizando de verdade, ver commit).
  */
 export async function migrateLegacyFlowToXml(flowId: string): Promise<string> {
   const [{ data: flow }, { data: lanes }, { data: nodes }, { data: edges }] = await Promise.all([
@@ -57,6 +134,9 @@ export async function migrateLegacyFlowToXml(flowId: string): Promise<string> {
     etapaTipo: (n.etapa_tipo as FlowNodeInput["etapaTipo"]) ?? "intermediaria",
     duracaoEstimadaMinutes: n.duracao_estimada_minutes,
     notaSecundaria: n.comentario,
+    negrito: n.negrito ?? false,
+    sombra: n.sombra ?? false,
+    fontSize: n.font_size,
     x: n.posicao_x,
     y: n.posicao_y,
     width: n.largura_px ?? undefined,
@@ -72,12 +152,8 @@ export async function migrateLegacyFlowToXml(flowId: string): Promise<string> {
   }));
 
   // Rótulos flutuantes do canvas_extras viram nós de nota simples,
-  // posicionados como estavam — o resto do canvas_extras (traços,
-  // formas, caixas de texto, imagens) fica de fora por ora (ver docstring
-  // acima).
-  const canvasExtras = flow?.canvas_extras as {
-    labels?: { id: string; x: number; y: number; text: string }[];
-  } | null;
+  // posicionados como estavam.
+  const canvasExtras = (flow?.canvas_extras as LegacyCanvasExtras | null) ?? null;
   const labelNodes: FlowNodeInput[] = (canvasExtras?.labels ?? []).map((label) => ({
     id: `label-${label.id}`,
     tipo: "nota",
@@ -87,10 +163,16 @@ export async function migrateLegacyFlowToXml(flowId: string): Promise<string> {
     y: label.y,
   }));
 
+  const strokes: CanvasStrokeInput[] = canvasExtras?.strokes ?? [];
+  const shapes: CanvasShapeInput[] = canvasExtras?.shapes ?? [];
+  const textboxes: CanvasTextBoxInput[] = canvasExtras?.textboxes ?? [];
+  const images = await resolveImages(canvasExtras?.images);
+
   return buildFlowXml({
     lanes: laneInputs,
     nodes: [...nodeInputs, ...labelNodes],
     edges: edgeInputs,
+    canvasExtras: { strokes, shapes, textboxes, images },
   });
 }
 

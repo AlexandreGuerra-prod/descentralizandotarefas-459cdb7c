@@ -22,6 +22,14 @@ export type FlowNodeInput = {
   etapaTipo?: EtapaTipo;
   duracaoEstimadaMinutes?: number | null;
   notaSecundaria?: string | null;
+  negrito?: boolean;
+  /** Sem equivalente nativo exato no mxGraph para text-shadow — aproximado
+   * com `shadow=1` (sombra da forma inteira, não só do texto). Mais simples
+   * e robusto que embutir um `<span style="text-shadow">` dentro do label
+   * HTML (que exigiria escapar HTML aninhado dentro do atributo `label`
+   * do UserObject); ver "Questão em aberto" no plano. */
+  sombra?: boolean;
+  fontSize?: number | null;
   x: number;
   y: number;
   width?: number;
@@ -60,12 +68,18 @@ function escapeXmlAttr(value: string): string {
  * recalcular o style depois de mudar cor/tipo de etapa num nó existente
  * (ver ProcessoToolbar.tsx). */
 export function shapeStyleFor(
-  node: Pick<FlowNodeInput, "tipo" | "cor" | "corTexto" | "etapaTipo">,
+  node: Pick<
+    FlowNodeInput,
+    "tipo" | "cor" | "corTexto" | "etapaTipo" | "negrito" | "sombra" | "fontSize"
+  >,
 ): string {
   const bg = COLOR_BG[node.cor];
   const border = COLOR_BORDER[node.cor];
   const fontColor = TEXT_COLOR[node.corTexto ?? "black"];
-  const common = `fillColor=${bg};strokeColor=${border};fontColor=${fontColor};html=1;whiteSpace=wrap;`;
+  const bold = node.negrito ? "fontStyle=1;" : "";
+  const shadow = node.sombra ? "shadow=1;" : "";
+  const fontSize = node.fontSize != null ? `fontSize=${node.fontSize};` : "";
+  const common = `fillColor=${bg};strokeColor=${border};fontColor=${fontColor};${bold}${shadow}${fontSize}html=1;whiteSpace=wrap;`;
 
   if (node.tipo !== "comentario" && node.etapaTipo === "decisao") {
     return `rhombus;${common}`;
@@ -90,6 +104,9 @@ function nodeAttrs(node: FlowNodeInput): Record<string, string> {
     attrs.duracao_estimada_minutes = String(node.duracaoEstimadaMinutes);
   }
   if (node.notaSecundaria) attrs.nota_secundaria = node.notaSecundaria;
+  if (node.negrito) attrs.negrito = "1";
+  if (node.sombra) attrs.sombra = "1";
+  if (node.fontSize != null) attrs.font_size = String(node.fontSize);
   return attrs;
 }
 
@@ -124,6 +141,156 @@ export function buildEdgeCellXml(edge: FlowEdgeInput): string {
     `style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;" edge="1" parent="1" ` +
     `source="${escapeXmlAttr(edge.sourceId)}" target="${escapeXmlAttr(edge.targetId)}">` +
     `<mxGeometry relative="1" as="geometry"/></mxCell>`
+  );
+}
+
+// --- Desenho livre (canvas_extras) -> shapes nativas do mxGraph ---
+//
+// O traço de lápis nativo do draw.io serializa como um stencil comprimido
+// em base64 (shape=stencil(<blob>)) — formato interno não documentado,
+// arriscado de reproduzir do zero (confirmado por spike: um traço
+// desenhado na UI real gera esse blob, não uma lista de pontos simples).
+// Em vez disso, cada traço vira uma ARESTA com múltiplos pontos
+// (sourcePoint/targetPoint + Array de waypoints), sem seta — formato XML
+// simples e bem entendido, e visualmente fiel: o app antigo também
+// desenhava os traços como polilinhas retas entre os pontos do mouse
+// (sem suavização), então não é uma aproximação, é o mesmo resultado.
+// Confirmado renderizando de verdade (spike com uma aresta assim).
+
+export type CanvasStrokeInput = {
+  id: string;
+  points: [number, number][];
+  color: string;
+  width: number;
+  opacity: number;
+};
+
+export function buildStrokeCellXml(stroke: CanvasStrokeInput): string | null {
+  if (stroke.points.length < 2) return null;
+  const [first, ...rest] = stroke.points;
+  const last = rest[rest.length - 1];
+  const mid = rest.slice(0, -1);
+  const midXml = mid.map(([x, y]) => `<mxPoint x="${x}" y="${y}"/>`).join("");
+  const opacity = Math.round(stroke.opacity * 100);
+  const style =
+    `endArrow=none;startArrow=none;html=1;rounded=0;curved=0;` +
+    `strokeColor=${stroke.color};strokeWidth=${stroke.width};opacity=${opacity};fillColor=none;`;
+
+  return (
+    `<mxCell id="${escapeXmlAttr(stroke.id)}" style="${escapeXmlAttr(style)}" edge="1" parent="1">` +
+    `<mxGeometry relative="1" as="geometry">` +
+    `<mxPoint x="${first[0]}" y="${first[1]}" as="sourcePoint"/>` +
+    `<mxPoint x="${last[0]}" y="${last[1]}" as="targetPoint"/>` +
+    `<Array as="points">${midXml}</Array>` +
+    `</mxGeometry></mxCell>`
+  );
+}
+
+export type CanvasShapeInput = {
+  id: string;
+  kind: "rect" | "ellipse" | "line" | "arrow";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+  fill: string | null;
+  width: number;
+  opacity: number;
+};
+
+export function buildShapeCellXml(shape: CanvasShapeInput): string {
+  const opacity = Math.round(shape.opacity * 100);
+
+  if (shape.kind === "line" || shape.kind === "arrow") {
+    const endArrow = shape.kind === "arrow" ? "classic" : "none";
+    const style = `endArrow=${endArrow};startArrow=none;html=1;strokeColor=${shape.color};strokeWidth=${shape.width};opacity=${opacity};`;
+    return (
+      `<mxCell id="${escapeXmlAttr(shape.id)}" style="${escapeXmlAttr(style)}" edge="1" parent="1">` +
+      `<mxGeometry relative="1" as="geometry">` +
+      `<mxPoint x="${shape.x}" y="${shape.y}" as="sourcePoint"/>` +
+      `<mxPoint x="${shape.x + shape.w}" y="${shape.y + shape.h}" as="targetPoint"/>` +
+      `</mxGeometry></mxCell>`
+    );
+  }
+
+  const ellipse = shape.kind === "ellipse" ? "ellipse;" : "rounded=0;";
+  const fill = shape.fill ?? "none";
+  const style = `${ellipse}whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=${shape.color};strokeWidth=${shape.width};opacity=${opacity};`;
+  const x = Math.min(shape.x, shape.x + shape.w);
+  const y = Math.min(shape.y, shape.y + shape.h);
+
+  return (
+    `<mxCell id="${escapeXmlAttr(shape.id)}" style="${escapeXmlAttr(style)}" vertex="1" parent="1">` +
+    `<mxGeometry x="${x}" y="${y}" width="${Math.abs(shape.w)}" height="${Math.abs(shape.h)}" as="geometry"/>` +
+    `</mxCell>`
+  );
+}
+
+export type CanvasTextBoxInput = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  color: string;
+  fontFamily: string;
+  fontSize: number;
+  orientation: "horizontal" | "vertical";
+};
+
+export function buildTextBoxCellXml(tb: CanvasTextBoxInput): string {
+  const vertical = tb.orientation === "vertical" ? "horizontal=0;" : "";
+  const style =
+    `text;html=1;whiteSpace=wrap;fontColor=${tb.color};fontFamily=${tb.fontFamily};` +
+    `fontSize=${tb.fontSize};${vertical}`;
+
+  return (
+    `<mxCell id="${escapeXmlAttr(tb.id)}" value="${escapeXmlAttr(tb.text)}" ` +
+    `style="${escapeXmlAttr(style)}" vertex="1" parent="1">` +
+    `<mxGeometry x="${tb.x}" y="${tb.y}" width="${tb.w}" height="${tb.h}" as="geometry"/>` +
+    `</mxCell>`
+  );
+}
+
+export type CanvasImageInput = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Data URI (base64) — imagens coladas vêm de um bucket PRIVADO com URLs
+   * assinadas de 1h (task-attachments), então uma URL direta expiraria;
+   * a migração baixa o arquivo e embute como data URI (ver
+   * migrateLegacyFlow.ts) pra ficar permanente dentro do XML. */
+  dataUri: string;
+};
+
+/** Um `;` cru dentro do valor de um style do mxGraph corta a string no
+ * lugar errado (`;` é o separador entre pares chave=valor) — uma data URI
+ * normal (`data:image/png;base64,AAAA`) quebra exatamente por causa do
+ * `;base64`. Mesma correção que o próprio draw.io aplica
+ * (`EditorUi.prototype.convertDataUri` em EditorUi.js: "Handles special
+ * case of data URI which needs to be rewritten to be used in a cell
+ * style to remove the semicolon") — remove o marcador `;base64`, mantendo
+ * o conteúdo depois da vírgula intacto. Confirmado por spike: sem isso a
+ * imagem quebra (ícone de imagem inválida); com isso, renderiza certo. */
+function stripSemicolonFromDataUri(uri: string): string {
+  if (!uri.startsWith("data:")) return uri;
+  const semi = uri.indexOf(";");
+  if (semi <= 0) return uri;
+  const comma = uri.indexOf(",", semi + 1);
+  if (comma < 0) return uri;
+  return uri.slice(0, semi) + uri.slice(comma);
+}
+
+export function buildImageCellXml(img: CanvasImageInput): string {
+  const style = `shape=image;image=${stripSemicolonFromDataUri(img.dataUri)};`;
+  return (
+    `<mxCell id="${escapeXmlAttr(img.id)}" style="${escapeXmlAttr(style)}" vertex="1" parent="1">` +
+    `<mxGeometry x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" as="geometry"/>` +
+    `</mxCell>`
   );
 }
 
@@ -163,15 +330,38 @@ export function emptyFlowXml(): string {
   return wrapGraphModel("");
 }
 
+export function buildCanvasExtrasXml(extras: {
+  strokes?: CanvasStrokeInput[];
+  shapes?: CanvasShapeInput[];
+  textboxes?: CanvasTextBoxInput[];
+  images?: CanvasImageInput[];
+}): string {
+  const strokesXml = (extras.strokes ?? [])
+    .map(buildStrokeCellXml)
+    .filter((s): s is string => s != null)
+    .join("");
+  const shapesXml = (extras.shapes ?? []).map(buildShapeCellXml).join("");
+  const textboxesXml = (extras.textboxes ?? []).map(buildTextBoxCellXml).join("");
+  const imagesXml = (extras.images ?? []).map(buildImageCellXml).join("");
+  return strokesXml + shapesXml + textboxesXml + imagesXml;
+}
+
 export function buildFlowXml(input: {
   lanes?: FlowLaneInput[];
   nodes: FlowNodeInput[];
   edges: FlowEdgeInput[];
+  canvasExtras?: {
+    strokes?: CanvasStrokeInput[];
+    shapes?: CanvasShapeInput[];
+    textboxes?: CanvasTextBoxInput[];
+    images?: CanvasImageInput[];
+  };
 }): string {
   const { xml: lanesXml } = buildLanesXml(input.lanes ?? []);
   const nodesXml = input.nodes.map(buildNodeCellXml).join("");
   const edgesXml = input.edges.map(buildEdgeCellXml).join("");
-  return wrapGraphModel(lanesXml + nodesXml + edgesXml);
+  const extrasXml = input.canvasExtras ? buildCanvasExtrasXml(input.canvasExtras) : "";
+  return wrapGraphModel(lanesXml + nodesXml + edgesXml + extrasXml);
 }
 
 /** O draw.io exporta envelopado em <mxfile><diagram>...<mxGraphModel>
