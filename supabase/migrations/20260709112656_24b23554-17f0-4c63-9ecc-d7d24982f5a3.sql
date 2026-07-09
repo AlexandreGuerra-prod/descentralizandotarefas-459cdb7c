@@ -1,0 +1,1 @@
+ALTER TABLE public.process_flow_edges ADD COLUMN IF NOT EXISTS label text;

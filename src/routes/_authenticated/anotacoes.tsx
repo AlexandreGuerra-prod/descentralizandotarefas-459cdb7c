@@ -17,6 +17,7 @@ import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Palette, Plus, Search, Trash2, Download, Share2, X, FileText, FileCode,
   List, ArrowRight, CheckSquare, Type, ChevronDown, ChevronRight,
+  Highlighter, Eraser, Link2, Link2Off,
 } from "lucide-react";
 import { MicButton } from "@/components/MicButton";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ type Note = {
 };
 
 const COLORS = ["#ef4444", "#f59e0b", "#eab308", "#10b981", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#111827", "#ffffff"];
+const HIGHLIGHTS = ["#fef08a", "#fecaca", "#bbf7d0", "#bfdbfe", "#e9d5ff", "#fed7aa", "#fbcfe8", "#e5e7eb"];
 
 function htmlToText(html: string) {
   if (typeof document === "undefined") return html.replace(/<[^>]*>/g, "");
@@ -398,7 +400,52 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
       if (t.checked) t.setAttribute("checked", "");
       else t.removeAttribute("checked");
       scheduleSave();
+      return;
     }
+    const anchor = t.closest("a");
+    if (anchor && anchor instanceof HTMLAnchorElement && anchor.href) {
+      e.preventDefault();
+      window.open(anchor.href, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  function applyHighlight(color: string) {
+    editorRef.current?.focus();
+    // hiliteColor is the cross-browser name; fall back to backColor
+    if (!document.execCommand("hiliteColor", false, color)) {
+      document.execCommand("backColor", false, color);
+    }
+    scheduleSave();
+  }
+
+  function clearFormatting() {
+    editorRef.current?.focus();
+    document.execCommand("removeFormat");
+    // removeFormat não limpa background em alguns browsers
+    document.execCommand("hiliteColor", false, "transparent");
+    scheduleSave();
+  }
+
+  function insertLink() {
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+    const selectedText = sel && !sel.isCollapsed ? sel.toString() : "";
+    const url = window.prompt("Cole o endereço (URL) do link:", "https://");
+    if (!url) return;
+    let href = url.trim();
+    if (!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)) {
+      href = "https://" + href;
+    }
+    const safeText = (selectedText || href).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const html = `<a href="${href}" target="_blank" rel="noopener noreferrer">${safeText}</a>&nbsp;`;
+    document.execCommand("insertHTML", false, html);
+    scheduleSave();
+  }
+
+  function removeLink() {
+    editorRef.current?.focus();
+    document.execCommand("unlink");
+    scheduleSave();
   }
 
   function addTag() {
@@ -557,6 +604,30 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" title="Marcar texto (destacar)"><Highlighter className="h-4 w-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <div className="grid grid-cols-4 gap-1 p-1">
+              {HIGHLIGHTS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="h-6 w-6 rounded border"
+                  style={{ background: c }}
+                  onClick={() => applyHighlight(c)}
+                  aria-label={`Marcador ${c}`}
+                />
+              ))}
+            </div>
+            <DropdownMenuItem onClick={clearFormatting}>
+              <Eraser className="h-4 w-4 mr-2" /> Limpar marcação
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button type="button" variant="ghost" size="icon" onClick={insertLink} title="Inserir link"><Link2 className="h-4 w-4" /></Button>
+        <Button type="button" variant="ghost" size="icon" onClick={removeLink} title="Remover link"><Link2Off className="h-4 w-4" /></Button>
         <span className="w-px h-5 bg-border mx-1" />
         <MicButton onResult={insertVoiceText} />
       </div>
@@ -579,6 +650,8 @@ function NoteEditor({ note, onClose, onDelete }: { note: Note; onClose: () => vo
         .notes-editor ul.checklist { list-style: none; padding-left: 0.25rem; }
         .notes-editor ul.checklist > li { display: flex; align-items: center; gap: 0.5rem; }
         .notes-editor ul.checklist input[type="checkbox"] { transform: scale(1.1); cursor: pointer; }
+        .notes-editor a { color: #2563eb; text-decoration: underline; cursor: pointer; }
+        .notes-editor a:hover { color: #1d4ed8; }
       `}</style>
     </Card>
   );

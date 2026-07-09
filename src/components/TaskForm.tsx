@@ -35,6 +35,24 @@ const MAX_FILE = 10 * 1024 * 1024;
 
 type AttachmentPreview = { url: string; name: string; mime: string };
 
+function sanitizeFileName(name: string): string {
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return normalized.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_").slice(-120) || "arquivo";
+}
+
+function extFromMime(mime: string): string {
+  if (!mime) return "bin";
+  const map: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+  };
+  return map[mime] ?? mime.split("/")[1] ?? "bin";
+}
+
 export function TaskForm({ taskId }: { taskId?: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -58,6 +76,7 @@ export function TaskForm({ taskId }: { taskId?: string }) {
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<AttachmentPreview | null>(null);
   const [noteToDelete, setNoteToDelete] = useState<{ id: string; titulo: string } | null>(null);
+  const [blockedFiles, setBlockedFiles] = useState<{ name: string; size: number }[]>([]);
 
   const { data: existing } = useQuery({
     queryKey: ["task", taskId],
@@ -161,32 +180,45 @@ export function TaskForm({ taskId }: { taskId?: string }) {
     syncedTaskIdRef.current = taskId;
   }, [existing, taskId]);
 
-  function validateSize(file: File): boolean {
-    if (file.size > MAX_FILE) {
-      toast.error(`O arquivo ${file.name} é maior que 10MB e foi bloqueado`);
-      return false;
+  function partitionBySize(files: File[]): { accepted: File[]; blocked: { name: string; size: number }[] } {
+    const accepted: File[] = [];
+    const blocked: { name: string; size: number }[] = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE) blocked.push({ name: f.name || "imagem colada", size: f.size });
+      else accepted.push(f);
     }
-    return true;
+    return { accepted, blocked };
   }
 
   async function handlePaste(e: React.ClipboardEvent) {
     const items = e.clipboardData?.items;
     if (!items) return;
+    const pasted: File[] = [];
     for (const item of items) {
       if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
-        if (file && validateSize(file)) {
-          setPendingFiles((prev) => [...prev, file]);
-          toast.success("Imagem anexada da área de transferência");
+        if (file) {
+          // Renomeia colagens (todas viriam como "image.png") pra evitar colisão no storage.
+          const ext = extFromMime(file.type);
+          const renamed = new File([file], `colagem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, { type: file.type });
+          pasted.push(renamed);
         }
       }
     }
+    if (pasted.length === 0) return;
+    const { accepted, blocked } = partitionBySize(pasted);
+    if (accepted.length > 0) {
+      setPendingFiles((prev) => [...prev, ...accepted]);
+      toast.success(`${accepted.length} imagem(ns) anexada(s) da área de transferência`);
+    }
+    if (blocked.length > 0) setBlockedFiles(blocked);
   }
 
   function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    const accepted = files.filter(validateSize);
+    const { accepted, blocked } = partitionBySize(files);
     if (accepted.length > 0) setPendingFiles((prev) => [...prev, ...accepted]);
+    if (blocked.length > 0) setBlockedFiles(blocked);
     e.target.value = "";
   }
 
@@ -219,9 +251,13 @@ export function TaskForm({ taskId }: { taskId?: string }) {
         savedId = ins.id;
       }
 
-      // Upload pending attachments
+      // Upload pending attachments — sufixo aleatório + nome higienizado
+      // evita colisão quando o usuário anexa vários arquivos no mesmo ms
+      // ou quando dois arquivos têm o mesmo nome (ex.: várias colagens).
       for (const f of pendingFiles) {
-        const path = `${user.id}/${savedId}/${Date.now()}-${f.name}`;
+        const safeName = sanitizeFileName(f.name);
+        const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`;
+        const path = `${user.id}/${savedId}/${unique}`;
         const { error: upErr } = await supabase.storage.from("task-attachments").upload(path, f);
         if (upErr) throw upErr;
         await supabase.from("task_attachments").insert({
@@ -528,6 +564,35 @@ export function TaskForm({ taskId }: { taskId?: string }) {
             >
               Excluir
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={blockedFiles.length > 0} onOpenChange={(open) => !open && setBlockedFiles([])}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivo(s) acima do limite</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  O tamanho máximo permitido por arquivo é <strong>10 MB</strong>. Os arquivos abaixo foram bloqueados e não serão anexados:
+                </p>
+                <ul className="text-sm list-disc pl-5 max-h-48 overflow-auto">
+                  {blockedFiles.map((f, i) => (
+                    <li key={i}>
+                      <span className="font-medium">{f.name}</span>{" "}
+                      <span className="text-muted-foreground">({(f.size / (1024 * 1024)).toFixed(1)} MB)</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-sm text-muted-foreground">
+                  Dica: compacte a imagem/PDF, divida o arquivo em partes menores ou envie apenas os arquivos dentro do limite.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBlockedFiles([])}>Entendi</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
