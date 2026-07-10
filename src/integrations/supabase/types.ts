@@ -262,7 +262,6 @@ export type Database = {
           canvas_extras: Json
           created_at: string
           descricao: string | null
-          drawio_xml: string | null
           id: string
           is_template: boolean
           nome: string
@@ -274,7 +273,6 @@ export type Database = {
           canvas_extras?: Json
           created_at?: string
           descricao?: string | null
-          drawio_xml?: string | null
           id?: string
           is_template?: boolean
           nome: string
@@ -286,7 +284,6 @@ export type Database = {
           canvas_extras?: Json
           created_at?: string
           descricao?: string | null
-          drawio_xml?: string | null
           id?: string
           is_template?: boolean
           nome?: string
