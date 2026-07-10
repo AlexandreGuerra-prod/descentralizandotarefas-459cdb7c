@@ -1,12 +1,110 @@
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buildFlowXml,
+  type FlowEdgeInput,
+  type FlowLaneInput,
+  type FlowNodeInput,
+} from "@/features/processos/xmlMapping";
 
 /**
  * Creates the example "Solicitação de férias" process flow for a user,
- * matching the legend image (start, middle, end, note, comment + label).
+ * matching the legend image (start, middle, end, note, comment).
+ *
+ * drawio_xml é a fonte de verdade (ver Fase 3 do plano) — o exemplo é
+ * montado com os mesmos builders de xmlMapping.ts usados pelo editor,
+ * não por inserts relacionais como na versão React Flow anterior.
  */
 export async function createExampleFlow(userId: string): Promise<string> {
-  // 1) Flow
-  const { data: flow, error: fErr } = await supabase
+  const laneServidor = crypto.randomUUID();
+  const laneRH = crypto.randomUUID();
+
+  const lanes: FlowLaneInput[] = [
+    { id: laneServidor, nome: "Servidor", tipo: "responsavel", ordem: 0, orientacao: "horizontal" },
+    { id: laneRH, nome: "RH", tipo: "responsavel", ordem: 1, orientacao: "horizontal" },
+  ];
+
+  const LANE_H = 240;
+  const y0 = 40;
+  const y1 = LANE_H + 40;
+  const yMid0 = LANE_H / 2 + 20;
+
+  const nSolicitar = crypto.randomUUID();
+  const nPreencher = crypto.randomUUID();
+  const nVerificar = crypto.randomUUID();
+  const nPrazo = crypto.randomUUID();
+  const nAnalisar = crypto.randomUUID();
+  const nAprovar = crypto.randomUUID();
+
+  const nodes: FlowNodeInput[] = [
+    {
+      id: nSolicitar,
+      tipo: "tarefa",
+      label: "Solicitar férias",
+      cor: "green",
+      etapaTipo: "inicio",
+      x: 60,
+      y: y0,
+      parentId: laneServidor,
+    },
+    {
+      id: nPreencher,
+      tipo: "tarefa",
+      label: "Preencher formulário",
+      cor: "blue",
+      etapaTipo: "intermediaria",
+      x: 320,
+      y: y0,
+      parentId: laneServidor,
+    },
+    {
+      id: nVerificar,
+      tipo: "comentario",
+      label: "Verificar saldo",
+      cor: "gray",
+      x: 320,
+      y: yMid0,
+      parentId: laneServidor,
+    },
+    {
+      id: nPrazo,
+      tipo: "nota",
+      label: "Prazo: 30 dias",
+      cor: "amber",
+      x: 60,
+      y: y1,
+      parentId: laneRH,
+    },
+    {
+      id: nAnalisar,
+      tipo: "tarefa",
+      label: "Analisar pedido",
+      cor: "purple",
+      etapaTipo: "intermediaria",
+      x: 320,
+      y: y1,
+      parentId: laneRH,
+    },
+    {
+      id: nAprovar,
+      tipo: "tarefa",
+      label: "Aprovar",
+      cor: "red",
+      etapaTipo: "fim",
+      x: 580,
+      y: y1,
+      parentId: laneRH,
+    },
+  ];
+
+  const edges: FlowEdgeInput[] = [
+    { id: crypto.randomUUID(), sourceId: nSolicitar, targetId: nPreencher },
+    { id: crypto.randomUUID(), sourceId: nPreencher, targetId: nAnalisar },
+    { id: crypto.randomUUID(), sourceId: nAnalisar, targetId: nAprovar },
+  ];
+
+  const xml = buildFlowXml({ lanes, nodes, edges });
+
+  const { data: flow, error } = await supabase
     .from("process_flows")
     .insert({
       user_id: userId,
@@ -14,91 +112,12 @@ export async function createExampleFlow(userId: string): Promise<string> {
       tipo: "profissional",
       is_template: true,
       descricao:
-        "Fluxo modelo demonstrando todos os tipos de nó (Início, Meio, Fim, Nota, Comentário) e etiqueta flutuante.",
-      canvas_extras: {
-        strokes: [],
-        labels: [
-          {
-            id: crypto.randomUUID(),
-            x: 760,
-            y: 60,
-            text: "⚠ Verificar RH antes",
-            color: "#b45309",
-          },
-        ],
-      } as never,
+        "Fluxo modelo demonstrando todos os tipos de nó (Início, Meio, Fim, Nota, Comentário).",
+      drawio_xml: xml,
     })
     .select("id")
     .single();
-  if (fErr) throw fErr;
-  const flowId = flow.id as string;
+  if (error) throw error;
 
-  // 2) Lanes (swimlanes)
-  const { data: lanes, error: lErr } = await supabase
-    .from("process_flow_lanes")
-    .insert([
-      { flow_id: flowId, nome: "Servidor", tipo: "responsavel", ordem: 0 },
-      { flow_id: flowId, nome: "RH", tipo: "responsavel", ordem: 1 },
-    ])
-    .select("id, ordem");
-  if (lErr) throw lErr;
-  const lane0 = lanes!.find((l) => l.ordem === 0)!.id;
-  const lane1 = lanes!.find((l) => l.ordem === 1)!.id;
-
-  // 3) Nodes
-  const LANE_H = 240;
-  const y0 = 40;
-  const y1 = LANE_H + 40;
-  const yMid0 = LANE_H / 2 + 20;
-
-  const nodeRows = [
-    {
-      flow_id: flowId, lane_id: lane0, tipo: "tarefa", texto: "Solicitar férias",
-      posicao_x: 60, posicao_y: y0, cor: "green", etapa_tipo: "inicio",
-      cor_texto: "black", red_flag: false,
-    },
-    {
-      flow_id: flowId, lane_id: lane0, tipo: "tarefa", texto: "Preencher formulário",
-      posicao_x: 320, posicao_y: y0, cor: "blue", etapa_tipo: "intermediaria",
-      cor_texto: "black", red_flag: false,
-    },
-    {
-      flow_id: flowId, lane_id: lane0, tipo: "comentario", texto: "Verificar saldo",
-      posicao_x: 320, posicao_y: yMid0, cor: "gray", etapa_tipo: "intermediaria",
-      cor_texto: "black", red_flag: false,
-    },
-    {
-      flow_id: flowId, lane_id: lane1, tipo: "nota", texto: "Prazo: 30 dias",
-      posicao_x: 60, posicao_y: y1, cor: "amber", etapa_tipo: "intermediaria",
-      cor_texto: "black", red_flag: false,
-    },
-    {
-      flow_id: flowId, lane_id: lane1, tipo: "tarefa", texto: "Analisar pedido",
-      posicao_x: 320, posicao_y: y1, cor: "purple", etapa_tipo: "intermediaria",
-      cor_texto: "black", red_flag: false,
-    },
-    {
-      flow_id: flowId, lane_id: lane1, tipo: "tarefa", texto: "Aprovar",
-      posicao_x: 580, posicao_y: y1, cor: "red", etapa_tipo: "fim",
-      cor_texto: "black", red_flag: false,
-    },
-  ];
-
-  const { data: insertedNodes, error: nErr } = await supabase
-    .from("process_flow_nodes")
-    .insert(nodeRows as never)
-    .select("id");
-  if (nErr) throw nErr;
-
-  const [nSolicitar, nPreencher, , , nAnalisar, nAprovar] = insertedNodes!;
-
-  // 4) Edges
-  const { error: eErr } = await supabase.from("process_flow_edges").insert([
-    { flow_id: flowId, source_node_id: nSolicitar.id, target_node_id: nPreencher.id },
-    { flow_id: flowId, source_node_id: nPreencher.id, target_node_id: nAnalisar.id },
-    { flow_id: flowId, source_node_id: nAnalisar.id, target_node_id: nAprovar.id },
-  ]);
-  if (eErr) throw eErr;
-
-  return flowId;
+  return flow.id as string;
 }

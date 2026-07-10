@@ -4,9 +4,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
@@ -23,6 +35,8 @@ import { Copy, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { createExampleFlow } from "@/lib/example-flow";
+import { emptyFlowXml } from "@/features/processos/xmlMapping";
+import { ensureDrawioXml } from "@/features/processos/migrateLegacyFlow";
 
 export const Route = createFileRoute("/_authenticated/processos/")({
   component: ProcessosList,
@@ -77,7 +91,13 @@ function ProcessosList() {
     mutationFn: async () => {
       const { data, error } = await supabase
         .from("process_flows")
-        .insert({ user_id: userId, nome: newNome || "Novo fluxo", tipo: newTipo, is_template: newTemplate })
+        .insert({
+          user_id: userId,
+          nome: newNome || "Novo fluxo",
+          tipo: newTipo,
+          is_template: newTemplate,
+          drawio_xml: emptyFlowXml(),
+        })
         .select("id")
         .single();
       if (error) throw error;
@@ -113,19 +133,23 @@ function ProcessosList() {
 
   const duplicateFlow = useMutation({
     mutationFn: async (flow: Flow) => {
-      // 1) Fetch original full row
+      // drawio_xml é a fonte de verdade agora — duplicar é só copiar o
+      // blob (migra o original primeiro se ainda for de um fluxo antigo,
+      // pré-draw.io, que nunca foi aberto no editor novo). Bem mais
+      // simples que o duplicate relacional antigo (raias/nós/arestas com
+      // remapeamento de id) — não há mais "task_id stripped on copy"
+      // porque não recriamos nós um a um: os nós tipo tarefa da cópia
+      // continuam apontando pro mesmo task_id do original (mesma
+      // limitação de antes, só que agora implícita no XML copiado).
       const { data: orig, error: oErr } = await supabase
-        .from("process_flows").select("*").eq("id", flow.id).single();
+        .from("process_flows")
+        .select("nome,tipo,descricao")
+        .eq("id", flow.id)
+        .single();
       if (oErr) throw oErr;
 
-      // 2) Insert new flow — always is_template = false on duplicate
-      //    canvas_extras (traços, formas, etiquetas, caixas de texto,
-      //    imagens coladas) precisa ser copiado junto, senão a cópia perde
-      //    toda anotação livre feita no canvas. Nota: imagens coladas
-      //    apontam pro mesmo arquivo no Storage do original (não duplicamos
-      //    o blob) — sem problema hoje porque nada apaga esses arquivos,
-      //    mas uma futura limpeza de órfãos precisa considerar que um
-      //    storage_path pode estar referenciado por mais de um fluxo.
+      const xml = await ensureDrawioXml(flow.id);
+
       const { data: newFlow, error: fErr } = await supabase
         .from("process_flows")
         .insert({
@@ -134,68 +158,12 @@ function ProcessosList() {
           tipo: orig.tipo,
           descricao: orig.descricao,
           is_template: false,
-          canvas_extras: orig.canvas_extras,
+          drawio_xml: xml,
         })
-        .select("id").single();
+        .select("id")
+        .single();
       if (fErr) throw fErr;
-      const newFlowId = newFlow.id as string;
-
-      // 3) Duplicate lanes (id remap)
-      const laneIdMap = new Map<string, string>();
-      const { data: lanes } = await supabase
-        .from("process_flow_lanes").select("*").eq("flow_id", flow.id);
-      if (lanes && lanes.length) {
-        const { data: insLanes, error: lErr } = await supabase
-          .from("process_flow_lanes")
-          .insert(lanes.map((l) => ({
-            flow_id: newFlowId, nome: l.nome, tipo: l.tipo, ordem: l.ordem, orientacao: l.orientacao,
-          })))
-          .select("id");
-        if (lErr) throw lErr;
-        insLanes!.forEach((row, i) => laneIdMap.set(lanes[i].id, row.id));
-      }
-
-      // 4) Duplicate nodes — task_id stripped on copy
-      const nodeIdMap = new Map<string, string>();
-      const { data: nodes } = await supabase
-        .from("process_flow_nodes").select("*").eq("flow_id", flow.id);
-      if (nodes && nodes.length) {
-        const inserts = nodes.map((n) => ({
-          flow_id: newFlowId,
-          tipo: n.tipo,
-          task_id: null,
-          texto: n.texto,
-          posicao_x: n.posicao_x,
-          posicao_y: n.posicao_y,
-          cor: n.cor,
-          red_flag: n.red_flag,
-          duracao_estimada_minutes: n.duracao_estimada_minutes,
-          etapa_tipo: n.etapa_tipo,
-          lane_id: n.lane_id ? laneIdMap.get(n.lane_id) ?? null : null,
-        }));
-        const { data: inserted, error: nErr } = await supabase
-          .from("process_flow_nodes").insert(inserts).select("id");
-        if (nErr) throw nErr;
-        inserted!.forEach((row, i) => nodeIdMap.set(nodes[i].id, row.id));
-      }
-
-      // 5) Duplicate edges remapped
-      const { data: edges } = await supabase
-        .from("process_flow_edges").select("*").eq("flow_id", flow.id);
-      if (edges && edges.length) {
-        const eInserts = edges
-          .map((e) => ({
-            flow_id: newFlowId,
-            source_node_id: nodeIdMap.get(e.source_node_id)!,
-            target_node_id: nodeIdMap.get(e.target_node_id)!,
-          }))
-          .filter((e) => e.source_node_id && e.target_node_id);
-        if (eInserts.length) {
-          const { error: eErr } = await supabase.from("process_flow_edges").insert(eInserts);
-          if (eErr) throw eErr;
-        }
-      }
-      return newFlowId;
+      return newFlow.id as string;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["process_flows"] });
@@ -222,7 +190,9 @@ function ProcessosList() {
             />
           </div>
           <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os tipos</SelectItem>
               <SelectItem value="profissional">Profissional</SelectItem>
@@ -230,21 +200,27 @@ function ProcessosList() {
             </SelectContent>
           </Select>
           <Select value={tplFilter} onValueChange={(v) => setTplFilter(v as typeof tplFilter)}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="templates">Apenas templates</SelectItem>
               <SelectItem value="reais">Apenas fluxos reais</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Novo fluxo</Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Novo fluxo
+          </Button>
           <Button
             variant="outline"
             onClick={() => createExample.mutate()}
             disabled={createExample.isPending}
             title="Cria um fluxo modelo pronto com nós de exemplo"
           >
-            <Sparkles className="h-4 w-4 mr-1" />Exemplo
+            <Sparkles className="h-4 w-4 mr-1" />
+            Exemplo
           </Button>
         </div>
       </div>
@@ -274,11 +250,13 @@ function ProcessosList() {
               <div className="flex gap-1 mt-3">
                 <Button size="sm" variant="ghost" asChild>
                   <Link to="/processos/$id" params={{ id: f.id }}>
-                    <Pencil className="h-3 w-3 mr-1" />Editar
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Editar
                   </Link>
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => duplicateFlow.mutate(f)}>
-                  <Copy className="h-3 w-3 mr-1" />Duplicar
+                  <Copy className="h-3 w-3 mr-1" />
+                  Duplicar
                 </Button>
                 <Button
                   size="sm"
@@ -286,7 +264,8 @@ function ProcessosList() {
                   className="text-destructive"
                   onClick={() => setDeleteId(f.id)}
                 >
-                  <Trash2 className="h-3 w-3 mr-1" />Excluir
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Excluir
                 </Button>
               </div>
             </Card>
@@ -302,12 +281,19 @@ function ProcessosList() {
           <div className="space-y-3">
             <div>
               <Label htmlFor="nome">Nome</Label>
-              <Input id="nome" value={newNome} onChange={(e) => setNewNome(e.target.value)} autoFocus />
+              <Input
+                id="nome"
+                value={newNome}
+                onChange={(e) => setNewNome(e.target.value)}
+                autoFocus
+              />
             </div>
             <div>
               <Label>Tipo</Label>
               <Select value={newTipo} onValueChange={(v) => setNewTipo(v as typeof newTipo)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="profissional">Profissional</SelectItem>
                   <SelectItem value="pessoal">Pessoal</SelectItem>
@@ -320,7 +306,9 @@ function ProcessosList() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancelar
+            </Button>
             <Button onClick={() => createFlow.mutate()}>Criar e abrir editor</Button>
           </DialogFooter>
         </DialogContent>
@@ -331,7 +319,8 @@ function ProcessosList() {
           <AlertDialogHeader>
             <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
             <AlertDialogDescription>
-              O fluxo e todos os seus nós, conexões e raias serão excluídos. Essa ação não pode ser desfeita.
+              O fluxo e todos os seus nós, conexões e raias serão excluídos. Essa ação não pode ser
+              desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
