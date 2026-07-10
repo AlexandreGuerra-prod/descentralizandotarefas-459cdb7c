@@ -1,0 +1,2 @@
+ALTER TABLE public.process_flows ADD COLUMN IF NOT EXISTS drawio_xml text;
+COMMENT ON COLUMN public.process_flows.drawio_xml IS 'XML mxGraph/draw.io — fonte de verdade do conteúdo do fluxo desde a migração pro editor embutido. Tabelas relacionais antigas e canvas_extras ficam congeladas, usadas só como entrada da migração por fluxo.';
