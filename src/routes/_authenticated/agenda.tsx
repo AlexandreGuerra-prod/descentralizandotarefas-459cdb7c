@@ -188,8 +188,6 @@ function AgendaPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-
       {resumoMes && (
         <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
           {resumoMes.total === 0 ? (
