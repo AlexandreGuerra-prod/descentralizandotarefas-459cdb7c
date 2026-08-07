@@ -179,6 +179,18 @@
 .fc-wrapper .fc-day-today { background: color-mix(in oklab, var(--primary) 10%, transparent) !important; }
 .fc-wrapper .fc-event { border-radius: 4px; padding: 1px 4px; font-size: 0.75rem; cursor: pointer; }
 .fc-wrapper .fc-list-event:hover td { background: var(--accent) !important; }
+/* Dias com tarefas agendadas: círculo ao redor do número do dia */
+.fc-wrapper .fc-day-has-tasks .fc-daygrid-day-number {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 9999px;
+  border: 2px solid var(--primary);
+  font-weight: 700;
+}
 /* Botões de zoom/fit do canvas de Processos (React Flow) — os ícones
    padrão são cinza-claro sobre fundo quase branco (baixo contraste no
    fundo claro do canvas). Cor mais viva + relevo 3D pra se destacar. */

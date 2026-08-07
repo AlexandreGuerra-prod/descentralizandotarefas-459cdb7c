@@ -6,8 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 const NAV = [
-  { to: "/principal", label: "Hoje", icon: ListChecks },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
+  { to: "/principal", label: "Hoje", icon: ListChecks },
   { to: "/cadastro", label: "Nova tarefa", icon: PlusCircle },
   { to: "/processos", label: "Processos", icon: Workflow },
   { to: "/anotacoes", label: "Anotações", icon: StickyNote },
