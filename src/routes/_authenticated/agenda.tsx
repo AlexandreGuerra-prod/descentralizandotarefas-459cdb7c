@@ -32,6 +32,7 @@ function AgendaPage() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const [isMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  const [periodo, setPeriodo] = useState<{ mes: string; inicio: Date; fim: Date } | null>(null);
 
   const { data: tasks = [] } = useQuery({
     queryKey: ["tasks", "agenda"],
@@ -62,6 +63,32 @@ function AgendaPage() {
       }),
     [tasks],
   );
+
+  // Mapa "YYYY-MM-DD" -> possui tarefa, usado pro círculo nos dias do calendário
+  const diasComTarefas = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) {
+      const d = t.prazo ? new Date(t.prazo) : new Date(t.data + "T00:00:00");
+      set.add(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      );
+    }
+    return set;
+  }, [tasks]);
+
+  const resumoMes = useMemo(() => {
+    if (!periodo) return null;
+    let total = 0;
+    let pendentes = 0;
+    for (const t of tasks) {
+      const d = t.prazo ? new Date(t.prazo) : new Date(t.data + "T00:00:00");
+      if (d >= periodo.inicio && d < periodo.fim) {
+        total++;
+        if (t.status !== "concluida") pendentes++;
+      }
+    }
+    return { total, pendentes, mes: periodo.mes };
+  }, [tasks, periodo]);
 
   async function handleExportIcs() {
     const { createEvents } = await import("ics");
@@ -162,6 +189,23 @@ function AgendaPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+
+      {resumoMes && (
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+          {resumoMes.total === 0 ? (
+            <>Nenhuma tarefa agendada para <span className="font-semibold capitalize">{resumoMes.mes}</span>.</>
+          ) : (
+            <>
+              Você tem <span className="font-semibold">{resumoMes.total}</span>{" "}
+              {resumoMes.total === 1 ? "tarefa agendada" : "tarefas agendadas"} para{" "}
+              <span className="font-semibold capitalize">{resumoMes.mes}</span>
+              {resumoMes.pendentes > 0 && <> — {resumoMes.pendentes} pendente{resumoMes.pendentes > 1 ? "s" : ""}</>}.
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         {Object.entries(PRIO_COLOR).map(([k, c]) => (
           <span key={k} className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-sm" style={{ background: c }} /> {k}
@@ -193,6 +237,20 @@ function AgendaPage() {
             dayMaxEvents={3}
             firstDay={0}
             nowIndicator
+            datesSet={(arg) => {
+              const ref = new Date(arg.view.currentStart);
+              const inicio = new Date(ref.getFullYear(), ref.getMonth(), 1);
+              const fim = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
+              const mes = inicio.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+              setPeriodo((p) =>
+                p && p.inicio.getTime() === inicio.getTime() ? p : { mes, inicio, fim },
+              );
+            }}
+            dayCellClassNames={(arg) => {
+              const d = arg.date;
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+              return diasComTarefas.has(key) ? ["fc-day-has-tasks"] : [];
+            }}
             eventClick={(info) => {
               const t = info.event.extendedProps.task as Task;
               navigate({ to: "/cadastro/$id", params: { id: t.id } });
