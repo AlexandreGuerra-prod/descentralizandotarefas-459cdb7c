@@ -62,8 +62,9 @@ export function TaskForm({ taskId }: { taskId?: string }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState(todayISO());
-  const [prazo, setPrazo] = useState("");
-  const [tipo, setTipo] = useState<"pessoal" | "profissional">("pessoal");
+  const [prazoData, setPrazoData] = useState("");
+  const [prazoHora, setPrazoHora] = useState("");
+  const [tipo, setTipo] = useState<"pessoal" | "profissional">("profissional");
   const [origem, setOrigem] = useState("");
   const [nup, setNup] = useState("");
   const [responsavel, setResponsavel] = useState("");
