@@ -139,7 +139,7 @@ function AnotacoesPage() {
         setSelectedId((data as Note).id);
       }
       // Clean the URL so a refresh doesn't recreate/reopen.
-      navigate({ to: "/anotacoes", search: {}, replace: true });
+      navigate({ to: "/anotacoes", search: () => ({}), replace: true });
     })();
   }, [taskId, isLoading, notes, taskTitulo, taskNumero, navigate, qc]);
 

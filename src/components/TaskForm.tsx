@@ -33,6 +33,19 @@ import { MicButton } from "@/components/MicButton";
 
 const MAX_FILE = 10 * 1024 * 1024;
 
+function NowClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="text-sm font-medium text-muted-foreground tabular-nums">
+      {now.toLocaleDateString("pt-BR")} · {now.toLocaleTimeString("pt-BR")}
+    </span>
+  );
+}
+
 type AttachmentPreview = { url: string; name: string; mime: string };
 
 function sanitizeFileName(name: string): string {
@@ -62,8 +75,9 @@ export function TaskForm({ taskId }: { taskId?: string }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState(todayISO());
-  const [prazo, setPrazo] = useState("");
-  const [tipo, setTipo] = useState<"pessoal" | "profissional">("pessoal");
+  const [prazoData, setPrazoData] = useState("");
+  const [prazoHora, setPrazoHora] = useState("");
+  const [tipo, setTipo] = useState<"pessoal" | "profissional">("profissional");
   const [origem, setOrigem] = useState("");
   const [nup, setNup] = useState("");
   const [responsavel, setResponsavel] = useState("");
@@ -167,7 +181,8 @@ export function TaskForm({ taskId }: { taskId?: string }) {
     setTitulo(existing.titulo);
     setDescricao(existing.descricao ?? "");
     setData(existing.data);
-    setPrazo(existing.prazo ? existing.prazo.slice(0, 16) : "");
+    setPrazoData(existing.prazo ? existing.prazo.slice(0, 10) : "");
+    setPrazoHora(existing.prazo ? existing.prazo.slice(11, 16) : "");
     setTipo(existing.tipo);
     setOrigem(existing.origem ?? "");
     setNup(existing.nup ?? "");
@@ -229,7 +244,7 @@ export function TaskForm({ taskId }: { taskId?: string }) {
         titulo,
         descricao: descricao || null,
         data,
-        prazo: prazo ? new Date(prazo).toISOString() : null,
+        prazo: prazoData ? new Date(`${prazoData}T${prazoHora || "23:59"}`).toISOString() : null,
         tipo,
         origem: tipo === "profissional" ? (origem || null) : null,
         nup: tipo === "profissional" ? (nup || null) : null,
@@ -287,7 +302,10 @@ export function TaskForm({ taskId }: { taskId?: string }) {
 
   return (
     <Card className="p-6 max-w-3xl" onPaste={handlePaste}>
-      <h1 className="text-2xl font-bold mb-6">{taskId ? "Editar tarefa" : "Nova tarefa"}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+        <h1 className="text-2xl font-bold">{taskId ? "Editar tarefa" : "Nova tarefa"}</h1>
+        <NowClock />
+      </div>
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <Label htmlFor="titulo">Título *</Label>
@@ -308,9 +326,15 @@ export function TaskForm({ taskId }: { taskId?: string }) {
             <Label htmlFor="data">Data</Label>
             <Input id="data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </div>
-          <div>
-            <Label htmlFor="prazo">Prazo</Label>
-            <Input id="prazo" type="datetime-local" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="prazo-data">Prazo (data)</Label>
+              <Input id="prazo-data" type="date" value={prazoData} onChange={(e) => setPrazoData(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="prazo-hora">Prazo (hora)</Label>
+              <Input id="prazo-hora" type="time" value={prazoHora} onChange={(e) => setPrazoHora(e.target.value)} />
+            </div>
           </div>
         </div>
 

@@ -17,7 +17,7 @@ export const Route = createFileRoute("/auth")({
       { name: "description", content: "Acesse o Planejador de Tarefas Diárias." },
     ],
   }),
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (s: Record<string, unknown>): { next?: string } => ({
     next: typeof s.next === "string" && s.next.startsWith("/") && !s.next.startsWith("//") ? s.next : undefined,
   }),
   component: AuthPage,
