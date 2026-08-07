@@ -33,6 +33,19 @@ import { MicButton } from "@/components/MicButton";
 
 const MAX_FILE = 10 * 1024 * 1024;
 
+function NowClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="text-sm font-medium text-muted-foreground tabular-nums">
+      {now.toLocaleDateString("pt-BR")} · {now.toLocaleTimeString("pt-BR")}
+    </span>
+  );
+}
+
 type AttachmentPreview = { url: string; name: string; mime: string };
 
 function sanitizeFileName(name: string): string {
@@ -289,7 +302,10 @@ export function TaskForm({ taskId }: { taskId?: string }) {
 
   return (
     <Card className="p-6 max-w-3xl" onPaste={handlePaste}>
-      <h1 className="text-2xl font-bold mb-6">{taskId ? "Editar tarefa" : "Nova tarefa"}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+        <h1 className="text-2xl font-bold">{taskId ? "Editar tarefa" : "Nova tarefa"}</h1>
+        <NowClock />
+      </div>
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <Label htmlFor="titulo">Título *</Label>
