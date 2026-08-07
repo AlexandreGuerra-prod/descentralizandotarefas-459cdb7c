@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouteContext } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Plus, Search, Download, Upload, ChevronDown, ChevronRight } from "lucide-react";
 import { TaskCard } from "@/components/TaskCard";
-import { addToDateISO, applySortMode, todayISO, type SortMode, type Task } from "@/lib/task-utils";
+import { addToDateISO, applySortMode, offsetTodayISO, todayISO, type SortMode, type Task } from "@/lib/task-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ export const Route = createFileRoute("/_authenticated/principal")({
 
 function Principal() {
   const qc = useQueryClient();
+  const { user } = useRouteContext({ from: "/_authenticated" });
   const [search, setSearch] = useState("");
   const [showNext7, setShowNext7] = useState(false);
   const [showDone, setShowDone] = useState(false);
@@ -39,9 +40,7 @@ function Principal() {
     },
   });
 
-  const next7 = new Date();
-  next7.setDate(next7.getDate() + 7);
-  const next7ISO = next7.toISOString().slice(0, 10);
+  const next7ISO = offsetTodayISO(7);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -161,8 +160,8 @@ function Principal() {
       const parsed = JSON.parse(text);
       const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.tasks) ? parsed.tasks : null;
       if (!Array.isArray(arr)) throw new Error("Arquivo inválido");
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Antes buscava o usuário pela rede e, se falhasse, dava `return` mudo:
+      // a importação não fazia nada e não avisava ninguém.
       const validTipo = new Set(["pessoal", "profissional"]);
       const validPrio = new Set(["altissima", "alta", "media", "baixa", "irrelevante"]);
       const validRec = new Set(["nenhuma", "diaria", "semanal", "mensal", "anual"]);

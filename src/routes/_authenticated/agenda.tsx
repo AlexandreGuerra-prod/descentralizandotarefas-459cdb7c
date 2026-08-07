@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
@@ -30,6 +30,9 @@ const PRIO_COLOR: Record<string, string> = {
 function AgendaPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // Usuário vem do guard da rota; evita uma chamada de rede a /auth/v1/user
+  // que, falhando no túnel, abortava a importação com "Sessão inválida".
+  const { user } = useRouteContext({ from: "/_authenticated" });
   const fileRef = useRef<HTMLInputElement>(null);
   const [isMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   const [periodo, setPeriodo] = useState<{ mes: string; inicio: Date; fim: Date } | null>(null);
@@ -133,8 +136,6 @@ function AgendaPage() {
       const comp = new ICAL.Component(jcal);
       const vevents = comp.getAllSubcomponents("vevent");
       if (vevents.length === 0) throw new Error("Nenhum evento encontrado");
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão inválida");
       const rows = vevents.map((v: unknown) => {
         const ev = new ICAL.Event(v as never);
         const start = ev.startDate.toJSDate();
