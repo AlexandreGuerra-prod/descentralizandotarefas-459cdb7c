@@ -168,7 +168,8 @@ export function TaskForm({ taskId }: { taskId?: string }) {
     setTitulo(existing.titulo);
     setDescricao(existing.descricao ?? "");
     setData(existing.data);
-    setPrazo(existing.prazo ? existing.prazo.slice(0, 16) : "");
+    setPrazoData(existing.prazo ? existing.prazo.slice(0, 10) : "");
+    setPrazoHora(existing.prazo ? existing.prazo.slice(11, 16) : "");
     setTipo(existing.tipo);
     setOrigem(existing.origem ?? "");
     setNup(existing.nup ?? "");
@@ -230,7 +231,7 @@ export function TaskForm({ taskId }: { taskId?: string }) {
         titulo,
         descricao: descricao || null,
         data,
-        prazo: prazo ? new Date(prazo).toISOString() : null,
+        prazo: prazoData ? new Date(`${prazoData}T${prazoHora || "23:59"}`).toISOString() : null,
         tipo,
         origem: tipo === "profissional" ? (origem || null) : null,
         nup: tipo === "profissional" ? (nup || null) : null,
@@ -309,9 +310,15 @@ export function TaskForm({ taskId }: { taskId?: string }) {
             <Label htmlFor="data">Data</Label>
             <Input id="data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </div>
-          <div>
-            <Label htmlFor="prazo">Prazo</Label>
-            <Input id="prazo" type="datetime-local" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="prazo-data">Prazo (data)</Label>
+              <Input id="prazo-data" type="date" value={prazoData} onChange={(e) => setPrazoData(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="prazo-hora">Prazo (hora)</Label>
+              <Input id="prazo-hora" type="time" value={prazoHora} onChange={(e) => setPrazoHora(e.target.value)} />
+            </div>
           </div>
         </div>
 
