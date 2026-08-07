@@ -1,0 +1,11 @@
+# O Dockerfile faz `COPY . .`; sem esta lista o contexto leva node_modules e
+# builds locais para dentro da imagem, o que deixa o build lento e pode
+# sobrescrever o que o `bun install` resolveu para o Linux do contêiner.
+node_modules
+.output
+dist
+.wrangler
+.tanstack
+.nitro
+.git
+*.log

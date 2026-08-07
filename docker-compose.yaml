@@ -5,4 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "3010:3000"
-    env_file: .env.production
+    # Era `.env.production`, arquivo que não existe no repositório — o
+    # `up -d` abortava antes de subir. As variáveis VITE_* já são embutidas
+    # no bundle durante o build; este env_file cobre o fallback de SSR
+    # (SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY) em src/integrations/supabase/client.ts.
+    env_file: .env

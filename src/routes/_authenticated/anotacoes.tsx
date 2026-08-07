@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,6 +83,7 @@ function downloadFile(name: string, content: string, mime: string) {
 
 function AnotacoesPage() {
   const qc = useQueryClient();
+  const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const { taskId, titulo: taskTitulo, numero: taskNumero } = Route.useSearch();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -122,12 +123,10 @@ function AnotacoesPage() {
       if (existing) {
         setSelectedId(existing.id);
       } else {
-        const { data: u } = await supabase.auth.getUser();
-        if (!u.user) return;
         const label = taskTitulo ?? "tarefa";
         const numLabel = taskNumero != null ? `#${taskNumero} — ` : "";
         const { data, error } = await supabase.from("notes").insert({
-          user_id: u.user.id,
+          user_id: user.id,
           title: `Nota — ${numLabel}${label}`,
           content: "",
           plain_text: "",
@@ -139,9 +138,13 @@ function AnotacoesPage() {
         setSelectedId((data as Note).id);
       }
       // Clean the URL so a refresh doesn't recreate/reopen.
-      navigate({ to: "/anotacoes", search: () => ({}), replace: true });
+      navigate({
+        to: "/anotacoes",
+        search: { taskId: undefined, titulo: undefined, numero: undefined },
+        replace: true,
+      });
     })();
-  }, [taskId, isLoading, notes, taskTitulo, taskNumero, navigate, qc]);
+  }, [taskId, isLoading, notes, taskTitulo, taskNumero, navigate, qc, user.id]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -169,10 +172,8 @@ function AnotacoesPage() {
 
   const createNote = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) throw new Error("não autenticado");
       const { data, error } = await supabase.from("notes").insert({
-        user_id: u.user.id, title: "Nova nota", content: "", plain_text: "", tags: [],
+        user_id: user.id, title: "Nova nota", content: "", plain_text: "", tags: [],
       }).select().single();
       if (error) throw error;
       return data as Note;

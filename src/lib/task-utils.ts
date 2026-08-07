@@ -54,9 +54,32 @@ export function isOverdueOrSoon(prazo: string | null): boolean {
   return due - now < 6 * 60 * 60 * 1000;
 }
 
-export function todayISO(): string {
-  const d = new Date();
+function formatLocalISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function todayISO(): string {
+  return formatLocalISO(new Date());
+}
+
+// Datas em `tasks.data` são locais (coluna DATE, sem fuso). Comparar com um
+// `toISOString().slice(0,10)` — que é UTC — desloca o corte em um dia inteiro
+// depois das 21h no horário de Brasília, escondendo ou incluindo tarefas
+// erradas nos filtros de período.
+export function offsetTodayISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatLocalISO(d);
+}
+
+// `prazo` é TIMESTAMPTZ: o PostgREST devolve em UTC. Fatiar a string crua
+// ("...T12:30:00+00:00".slice(11,16)) entrega a hora UTC, que ao ser re-salva
+// é reinterpretada como local — cada edição empurrava o prazo em 3h.
+export function splitPrazoLocal(prazoISO: string): { data: string; hora: string } {
+  const d = new Date(prazoISO);
+  if (Number.isNaN(d.getTime())) return { data: "", hora: "" };
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { data: formatLocalISO(d), hora: `${pad(d.getHours())}:${pad(d.getMinutes())}` };
 }
 
 export function addToDateISO(dateISO: string, recurrence: string): string {

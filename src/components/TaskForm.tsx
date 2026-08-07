@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { PRIORITY_LABEL, RECURRENCE_LABEL, todayISO, type Shortcut, type Task } from "@/lib/task-utils";
+import { PRIORITY_LABEL, RECURRENCE_LABEL, splitPrazoLocal, todayISO, type Shortcut, type Task } from "@/lib/task-utils";
 import { toast } from "sonner";
 import { MicButton } from "@/components/MicButton";
 
@@ -181,8 +181,9 @@ export function TaskForm({ taskId }: { taskId?: string }) {
     setTitulo(existing.titulo);
     setDescricao(existing.descricao ?? "");
     setData(existing.data);
-    setPrazoData(existing.prazo ? existing.prazo.slice(0, 10) : "");
-    setPrazoHora(existing.prazo ? existing.prazo.slice(11, 16) : "");
+    const prazoLocal = existing.prazo ? splitPrazoLocal(existing.prazo) : { data: "", hora: "" };
+    setPrazoData(prazoLocal.data);
+    setPrazoHora(prazoLocal.hora);
     setTipo(existing.tipo);
     setOrigem(existing.origem ?? "");
     setNup(existing.nup ?? "");
@@ -237,6 +238,12 @@ export function TaskForm({ taskId }: { taskId?: string }) {
     e.target.value = "";
   }
 
+  // Guarda o id da tarefa recém-criada. Sem isso, qualquer falha depois do
+  // INSERT (tipicamente o upload de um anexo) mostrava só "Erro" e deixava
+  // `taskId` indefinido — o segundo clique em Salvar criava uma SEGUNDA
+  // tarefa, e o usuário terminava com duplicatas sem entender por quê.
+  const createdIdRef = useRef<string | undefined>(undefined);
+
   const save = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -256,26 +263,35 @@ export function TaskForm({ taskId }: { taskId?: string }) {
         publicacao_data: publicacao ? (publicacaoData || null) : null,
       };
 
-      let savedId = taskId;
-      if (taskId) {
-        const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+      let savedId = taskId ?? createdIdRef.current;
+      if (savedId) {
+        const { error } = await supabase.from("tasks").update(payload).eq("id", savedId);
         if (error) throw error;
       } else {
         const { data: ins, error } = await supabase.from("tasks").insert(payload).select("id").single();
         if (error) throw error;
         savedId = ins.id;
+        createdIdRef.current = savedId;
       }
 
       // Upload pending attachments — sufixo aleatório + nome higienizado
       // evita colisão quando o usuário anexa vários arquivos no mesmo ms
       // ou quando dois arquivos têm o mesmo nome (ex.: várias colagens).
+      // Falha de anexo não invalida a tarefa já gravada: os que subiram saem
+      // da fila, os que falharam ficam para nova tentativa.
+      const stillPending: File[] = [];
+      const failedNames: string[] = [];
       for (const f of pendingFiles) {
         const safeName = sanitizeFileName(f.name);
         const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`;
         const path = `${user.id}/${savedId}/${unique}`;
         const { error: upErr } = await supabase.storage.from("task-attachments").upload(path, f);
-        if (upErr) throw upErr;
-        await supabase.from("task_attachments").insert({
+        if (upErr) {
+          stillPending.push(f);
+          failedNames.push(f.name);
+          continue;
+        }
+        const { error: metaErr } = await supabase.from("task_attachments").insert({
           task_id: savedId!,
           user_id: user.id,
           storage_path: path,
@@ -283,19 +299,62 @@ export function TaskForm({ taskId }: { taskId?: string }) {
           mime_type: f.type,
           size_bytes: f.size,
         });
+        if (metaErr) {
+          // Metadado é o que faz o anexo aparecer na lista; sem ele o arquivo
+          // vira lixo órfão no storage. Remove e devolve para a fila.
+          await supabase.storage.from("task-attachments").remove([path]);
+          stillPending.push(f);
+          failedNames.push(f.name);
+        }
       }
+      return { stillPending, failedNames };
     },
-    onSuccess: () => {
-      toast.success(taskId ? "Tarefa atualizada" : "Tarefa criada");
+    onSuccess: ({ stillPending, failedNames }) => {
+      const wasEditing = !!taskId;
       qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["task-attachments"] });
+
+      if (failedNames.length > 0) {
+        // Permanece na tela: a tarefa está salva, mas os anexos que faltaram
+        // seriam perdidos numa navegação silenciosa.
+        setPendingFiles(stillPending);
+        toast.warning(
+          `Tarefa ${wasEditing ? "atualizada" : "criada"}, mas ${failedNames.length} anexo(s) não subiram`,
+          { description: `${failedNames.join(", ")}. Clique em Salvar de novo para tentar outra vez.` },
+        );
+        return;
+      }
+
+      setPendingFiles([]);
+      toast.success(wasEditing ? "Tarefa atualizada" : "Tarefa criada");
       navigate({ to: "/principal" });
     },
-    onError: (e: Error) => toast.error("Erro", { description: e.message }),
+    onError: (e: Error) => {
+      // Num acesso por túnel externo a queda mais comum é de rede, e
+      // "Failed to fetch" não diz nada a quem está usando. A tarefa não foi
+      // gravada e basta tentar de novo — o texto do formulário continua aqui.
+      const rede = e.message.includes("Failed to fetch") || e.message.includes("NetworkError");
+      toast.error(rede ? "Sem conexão com o servidor" : "Erro ao salvar", {
+        description: rede
+          ? "A tarefa não foi gravada e nada do que você digitou se perdeu. Clique em Salvar novamente."
+          : e.message,
+      });
+    },
     onSettled: () => setSaving(false),
   });
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!data) {
+      toast.error("Informe a data da tarefa");
+      return;
+    }
+    if (prazoHora && !prazoData) {
+      // Sem esta checagem a hora era descartada em silêncio e a tarefa
+      // gravava sem prazo nenhum.
+      toast.error("Prazo incompleto", { description: "Informe a data do prazo, não apenas a hora." });
+      return;
+    }
     setSaving(true);
     save.mutate();
   }

@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search } from "lucide-react";
 import { TaskCard } from "@/components/TaskCard";
-import { sortTasks, todayISO, type Task } from "@/lib/task-utils";
+import { offsetTodayISO, sortTasks, todayISO, type Task } from "@/lib/task-utils";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/historico")({
@@ -45,9 +45,7 @@ function Historico() {
     if (statusFilter !== "todas") arr = arr.filter((t) => t.status === statusFilter);
     if (tipoFilter !== "ambas") arr = arr.filter((t) => t.tipo === tipoFilter);
     if (period !== "all") {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - Number(period));
-      const cutoffISO = cutoff.toISOString().slice(0, 10);
+      const cutoffISO = offsetTodayISO(-Number(period));
       arr = arr.filter((t) => t.data >= cutoffISO);
     }
     const term = search.trim().toLowerCase();
