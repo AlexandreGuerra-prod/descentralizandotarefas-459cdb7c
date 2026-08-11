@@ -13,6 +13,48 @@ Documentos irmãos:
 
 ---
 
+## 09/08/2026 — Google Tradutor derrubava o app ao salvar
+
+Sintoma: ao salvar uma tarefa, a tela não avançava e caía em "Esta página não
+carregou". Pior no Chrome e no Edge, estável no Firefox, e só numa máquina
+específica. Console:
+
+```
+NotFoundError: Failed to execute 'removeChild' on 'Node':
+The node to be removed is not a child of this node.
+```
+
+**Causa:** `__root.tsx` declarava `<html lang="en">` num aplicativo escrito
+inteiramente em português. Chrome e Edge liam `lang="en"`, concluíam que a
+página estava em inglês e aplicavam o Google Tradutor automaticamente.
+
+O tradutor substitui os nós de texto por wrappers `<font>`. No primeiro
+desmonte de subárvore — e salvar uma tarefa navega para `/principal`, o que
+desmonta o formulário — o React não encontra mais os nós onde esperava, e
+estoura no `removeChild`. O erro sobe até o `errorComponent` do root.
+
+**A prova:** o usuário relatou ter visto os botões "Tentar novamente" e
+"voltar para a home". O código-fonte, naquele momento, dizia `Try again` e
+`Go home`, em inglês. A tradução veio do navegador.
+
+**Correção:**
+
+- `<html lang="pt-BR" translate="no">`
+- `<meta name="google" content="notranslate">`
+- Textos de erro e 404 traduzidos para português — estavam em inglês, o que
+  ajudava a enganar o detector de idioma do navegador
+
+**Não confundir com a correção de 07/08.** Aquela — `getUser()` tratando falha
+de rede como falha de autenticação — era um defeito real e continua válida, mas
+tinha outro sintoma: ser jogado para a tela de login. Esta cai na tela de erro.
+Os dois pareciam "o sistema caiu ao salvar".
+
+**Se reaparecer:** verificar no navegador da máquina afetada se há "sempre
+traduzir inglês" ativado (`chrome://settings/languages`). A preferência é do
+perfil e pode persistir mesmo com o `lang` corrigido.
+
+---
+
 ## 09/08/2026 — Editor de processos publicado
 
 ### O `/processos` nunca funcionou em produção
