@@ -13,6 +13,29 @@ Documentos irmãos:
 
 ---
 
+## 09/08/2026 — Atalho a partir do Nextcloud
+
+O app é acessível agora por um ícone na barra superior do Nextcloud do usuário,
+via app `external` (Sites Externos). **Nenhuma alteração de código** — é
+configuração do lado do Nextcloud.
+
+**Abre em nova aba, não em iframe — deliberadamente.** Embutir seria
+tecnicamente possível (o app não envia `X-Frame-Options` nem CSP que impeçam),
+mas a sessão do Supabase vive no `localStorage`, e num iframe entre origens
+diferentes o Chrome aplica particionamento de armazenamento de terceiros. O
+sintoma seria pedir login de forma intermitente — justamente a classe de
+problema que consumiu este mesmo dia.
+
+**Não é login único.** São duas autenticações independentes; o que existe é um
+atalho.
+
+Integração real de dados — sincronizar com o app Tasks do Nextcloud por
+CalDAV/VTODO — foi avaliada e fica em aberto. Meio caminho já existe no
+projeto: `ics` e `ical.js` são dependências, e `agenda.tsx` já exporta e importa
+`.ics`. O que falta é o motor de sincronização e a resolução de conflito.
+
+---
+
 ## 09/08/2026 — Google Tradutor derrubava o app ao salvar
 
 Sintoma: ao salvar uma tarefa, a tela não avançava e caía em "Esta página não
