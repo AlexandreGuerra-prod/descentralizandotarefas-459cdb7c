@@ -1,0 +1,12 @@
+{
+  "testCommand": "npm run test",
+  "reporter": "tap",
+  "testGlobs": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "srcGlobs": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}
